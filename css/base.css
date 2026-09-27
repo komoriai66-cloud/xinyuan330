@@ -58,10 +58,6 @@
                :root {
                    --app-viewport-height: 100dvh;
                }
-
-               #phone-screen {
-                   height: 100dvh;
-               }
            }
 
            #chat-input-area {
