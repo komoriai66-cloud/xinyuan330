@@ -12,6 +12,6 @@
   ],
   "vars": {
     "ALLOWED_ORIGINS": "https://wq70.github.io",
-    "TURNSTILE_HOSTNAMES": "wq70.github.io"
+    "TURNSTILE_HOSTNAMES": "wq70.github.io,localhost,127.0.0.1"
   }
 }

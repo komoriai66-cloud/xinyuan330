@@ -5,7 +5,12 @@ import {
 
 function corsHeaders(origin, env) {
   const allowed = String(env.ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean);
-  return origin && allowed.includes(origin) ? {
+  let localOrigin = false;
+  try {
+    const url = new URL(origin);
+    localOrigin = url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname) && url.origin === origin;
+  } catch (_) { /* Invalid or opaque origins are denied. */ }
+  return origin && (allowed.includes(origin) || localOrigin) ? {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-EPhone-Feedback',

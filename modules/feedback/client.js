@@ -147,7 +147,7 @@
       ? '只有你和作者能看到对话。作者回复后，回到这里即可查看。'
       : '公开内容经作者审核后，其他用户可以看到正文、截图及回复。';
     root.querySelector('.feedback-main').innerHTML = `
-      <p class="feedback-note">${lead}<br>对话只认当前浏览器。清除网站数据或切换浏览器后无法找回。</p>
+      <div class="feedback-welcome"><span class="feedback-avatar" aria-hidden="true">E</span><p class="feedback-note">${lead}<br>对话只认当前浏览器。清除网站数据或切换浏览器后无法找回。</p></div>
       <button type="button" class="feedback-primary" data-action="new">＋ ${state.mode === 'private' ? '发起匿名对话' : '提交公开反馈'}</button>
       <h3>我提交的</h3><div class="feedback-owned">${owned.length ? owned.map(item => `
         <button type="button" class="feedback-list-item" data-action="own" data-id="${item.id}"><b>${escapeHtml(item.title)}</b><span class="feedback-list-meta">${item.id.slice(0, 8)}</span></button>`).join('') : '<p class="feedback-empty">还没有提交内容</p>'}</div>
@@ -192,16 +192,15 @@
     state.page = 'new'; heading();
     const draft = readLocal(DRAFT_KEY, {});
     root.querySelector('.feedback-main').innerHTML = `<form class="feedback-new-form">
-      <p class="feedback-note">${state.mode === 'private' ? '内容仅作者可见。' : '提交后先由作者审核，公开时其他用户可以看到以下内容和作者回复。'}发送的内容保存在服务器，未发送草稿保存在本设备。</p>
+      <div class="feedback-welcome"><span class="feedback-avatar" aria-hidden="true">E</span><p class="feedback-note">${state.mode === 'private' ? '把想法写给我吧，内容只有你和我能看见。' : '把想法写在这里。审核公开后，大家可以看到内容和回复。'}已发送内容保存在服务器，草稿只留在本设备。</p></div>
       <label>分类<select name="category"><option value="wish">许愿</option><option value="feedback">反馈</option><option value="bug">报错</option><option value="other">其他</option></select></label>
-      <label>标题<input name="title" maxlength="80" required placeholder="简单描述这件事"></label>
       ${state.mode === 'public' ? '<label>公开昵称（可不填）<input name="nickname" maxlength="24" placeholder="匿名用户"></label>' : ''}
-      <label>内容<textarea name="body" maxlength="5000" rows="7" required placeholder="写下你的想法…"></textarea></label>
+      <label>写一条消息<textarea name="body" maxlength="5000" rows="7" required placeholder="写下你的想法…"></textarea></label>
       <label>截图（可选，1 MB 以内）<input name="image" type="file" accept="image/png,image/jpeg,image/webp"></label>
       <div class="feedback-challenge"></div>
       <button class="feedback-primary" type="submit">${state.mode === 'private' ? '发送给作者' : '提交审核'}</button></form>`;
     const form = root.querySelector('form');
-    if (draft.mode === state.mode) ['category', 'title', 'nickname', 'body'].forEach(key => {
+    if (draft.mode === state.mode) ['category', 'nickname', 'body'].forEach(key => {
       if (form.elements[key] && typeof draft[key] === 'string') form.elements[key].value = draft[key];
     });
     renderChallenge();
@@ -219,7 +218,7 @@
       state.page = 'thread'; heading();
       const canReply = !!credential && data.thread.status !== 'closed' && data.thread.status !== 'hidden';
       root.querySelector('.feedback-main').innerHTML = `
-        <p class="feedback-note">${data.thread.kind === 'public' ? `公开反馈 · ${escapeHtml(data.thread.status === 'pending' ? '等待审核' : data.thread.status === 'visible' ? '已公开' : '已隐藏')}` : '匿名对话 · 仅你和作者可见'}<br>${dateText(data.thread.created_at)}</p>
+        <div class="feedback-welcome"><span class="feedback-avatar" aria-hidden="true">E</span><p class="feedback-note">${data.thread.kind === 'public' ? `公开反馈 · ${escapeHtml(data.thread.status === 'pending' ? '等待审核' : data.thread.status === 'visible' ? '已公开' : '已隐藏')}` : '匿名对话 · 仅你和作者可见'}<br>${dateText(data.thread.created_at)}</p></div>
         <div class="feedback-messages">${data.messages.map(message => `
           <article class="feedback-message ${message.sender === 'admin' ? 'author' : 'visitor'}"><span>${message.sender === 'admin' ? '作者' : escapeHtml(data.thread.nickname || '我')} · ${dateText(message.created_at)}</span>
             <p>${escapeHtml(message.body).replace(/\n/g, '<br>')}</p>
@@ -283,6 +282,8 @@
       form.querySelector('[type="submit"]').disabled = true;
       status('正在发送…');
       if (form.classList.contains('feedback-new-form')) {
+        const summary = String(data.get('body') || '').trim().replace(/\s+/g, ' ');
+        data.set('title', summary.length > 32 ? `${summary.slice(0, 32)}…` : summary);
         const oldDraft = readLocal(DRAFT_KEY, {});
         const pending = oldDraft.mode === state.mode && oldDraft.pending;
         const id = pending?.id || randomUUID();

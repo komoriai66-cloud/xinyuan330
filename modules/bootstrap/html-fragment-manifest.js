@@ -1,5 +1,5 @@
 window.__EPHONE_HTML_FRAGMENT_SCRIPTS = [
-  "generated/html-fragments/document-head.js?v=feedback-20260928",
+  "generated/html-fragments/document-head.js?v=feedback-ui-20260928",
   "generated/html-fragments/intro-and-home.js",
   "generated/html-fragments/health-and-couple.js",
   "generated/html-fragments/cphone.js",
@@ -7,7 +7,7 @@ window.__EPHONE_HTML_FRAGMENT_SCRIPTS = [
   "generated/html-fragments/worldbook-and-presets.js",
   "generated/html-fragments/api-settings-core.js",
   "generated/html-fragments/api-settings-providers.js",
-  "generated/html-fragments/api-settings-data.js?v=feedback-20260928",
+  "generated/html-fragments/api-settings-data.js?v=feedback-ui-20260928",
   "generated/html-fragments/data-and-social-list.js",
   "generated/html-fragments/chat-interface.js",
   "generated/html-fragments/appearance-and-thoughts.js",
