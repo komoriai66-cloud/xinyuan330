@@ -1,0 +1,1211 @@
+/* ==========================================================================
+   心之信箱 · 秘语信箱 (Humpty Lock / Guardian Mailbox Edition)
+   严格规范：纯白 (#fff) + 纯黑 (#000 / #111) 单色雅致风，无任何渐变色，无默认表情
+   ========================================================================== */
+
+body.feedback-open {
+  overflow: hidden !important;
+}
+
+#ephone-feedback,
+#ephone-feedback * {
+  box-sizing: border-box;
+}
+
+/* 遮罩总层：纯白背景、无色差 */
+#ephone-feedback.mailbox-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  padding: max(env(safe-area-inset-top), 14px) 14px max(env(safe-area-inset-bottom), 14px);
+  background: #ffffff;
+  color: #111111;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Songti SC", "SimSun", "PingFang SC", "Hiragino Sans GB", serif, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#ephone-feedback.mailbox-overlay.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 按钮与输入规范 */
+#ephone-feedback button,
+#ephone-feedback input,
+#ephone-feedback select,
+#ephone-feedback textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: 0.02em;
+}
+
+#ephone-feedback button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+#ephone-feedback input:focus,
+#ephone-feedback textarea:focus,
+#ephone-feedback button:focus-visible {
+  outline: 1px solid #111111;
+  outline-offset: 2px;
+}
+
+/* 主容器：古典皇家信封外廓（细双线框，纯白底） */
+#ephone-feedback .mailbox-envelope {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 640px);
+  height: min(100%, 860px);
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #111111;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px #111111;
+}
+
+/* 四角古典饰纹 */
+#ephone-feedback .mailbox-corner {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  z-index: 10;
+}
+#ephone-feedback .corner-tl { top: 4px; left: 4px; border-top: 1px solid #111; border-left: 1px solid #111; }
+#ephone-feedback .corner-tr { top: 4px; right: 4px; border-top: 1px solid #111; border-right: 1px solid #111; }
+#ephone-feedback .corner-bl { bottom: 4px; left: 4px; border-bottom: 1px solid #111; border-left: 1px solid #111; }
+#ephone-feedback .corner-br { bottom: 4px; right: 4px; border-bottom: 1px solid #111; border-right: 1px solid #111; }
+
+/* 顶部 Header */
+#ephone-feedback .mailbox-header {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  min-height: 60px;
+  padding: 0 10px;
+  background: #ffffff;
+  border-bottom: 1px solid #111111;
+}
+
+#ephone-feedback .mailbox-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: #111111;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+#ephone-feedback .mailbox-btn-icon:hover {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-btn-icon:active {
+  transform: scale(0.92);
+}
+
+#ephone-feedback .mailbox-title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+}
+
+#ephone-feedback .mailbox-sub-emblem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-sub-emblem svg {
+  width: 10px;
+  height: 10px;
+}
+
+#ephone-feedback .mailbox-title {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 状态通知条 */
+#ephone-feedback .mailbox-status:not(:empty) {
+  padding: 8px 16px;
+  background: #ffffff;
+  border-bottom: 1px dashed #111111;
+  font-size: 12px;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+
+#ephone-feedback .mailbox-status.error {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* 主内容可滚动区域 */
+#ephone-feedback .mailbox-viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 22px calc(24px + env(safe-area-inset-bottom));
+  background: #ffffff;
+  overscroll-behavior: contain;
+}
+
+/* -------------------------------------------------------------
+   1. 首页：心之信箱展厅 (Mailbox Hub)
+   ------------------------------------------------------------- */
+#ephone-feedback .mailbox-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* 古典信函引言卷轴 (Parchment Notice) */
+#ephone-feedback .mailbox-parchment {
+  position: relative;
+  padding: 18px 16px 16px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  text-align: center;
+}
+
+#ephone-feedback .mailbox-crest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+#ephone-feedback .mailbox-crest-icon {
+  display: inline-flex;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-crest-divider {
+  position: relative;
+  width: 70px;
+  height: 1px;
+  background: #111111;
+}
+
+#ephone-feedback .mailbox-crest-divider .gem {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 7px;
+  height: 7px;
+  background: #ffffff;
+  border: 1px solid #111111;
+}
+
+#ephone-feedback .mailbox-parchment-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.75;
+  color: #222222;
+  letter-spacing: 0.04em;
+}
+
+/* 核心投递插槽：古典封信入口 (Post Slot) */
+#ephone-feedback .mailbox-slot-section {
+  margin: 4px 0;
+}
+
+#ephone-feedback .mailbox-post-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 16px 18px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px #111111;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+#ephone-feedback .mailbox-post-slot:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-post-slot:hover .mailbox-slot-arrow,
+#ephone-feedback .mailbox-post-slot:hover .mailbox-slot-hint {
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-slot-decor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+#ephone-feedback .mailbox-slot-content {
+  flex: 1;
+  min-width: 0;
+  margin: 0 14px;
+}
+
+#ephone-feedback .mailbox-slot-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+#ephone-feedback .mailbox-slot-hint {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #555555;
+  margin-top: 3px;
+}
+
+#ephone-feedback .mailbox-slot-arrow {
+  flex-shrink: 0;
+  color: #111111;
+}
+
+/* 区块通用标题 */
+#ephone-feedback .mailbox-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#ephone-feedback .mailbox-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #111111;
+}
+
+#ephone-feedback .mailbox-section-glyph {
+  display: inline-flex;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  flex: 1;
+}
+
+#ephone-feedback .mailbox-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid #111111;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* 个人信札堆栈卡片 */
+#ephone-feedback .mailbox-letter-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#ephone-feedback .mailbox-letter-card {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+#ephone-feedback .mailbox-letter-card:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-letter-card:hover .mailbox-card-stamp,
+#ephone-feedback .mailbox-letter-card:hover .mailbox-card-unseal-tag,
+#ephone-feedback .mailbox-letter-card:hover .mailbox-letter-code {
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-card-stamp {
+  flex-shrink: 0;
+  color: #111111;
+  margin-right: 12px;
+}
+
+#ephone-feedback .mailbox-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+#ephone-feedback .mailbox-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+#ephone-feedback .mailbox-letter-code {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #555555;
+  font-family: monospace;
+}
+
+#ephone-feedback .mailbox-status-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  letter-spacing: 0.05em;
+}
+
+#ephone-feedback .mailbox-status-tag.has-reply {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-letter-card:hover .mailbox-status-tag.has-reply {
+  background: #ffffff;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-card-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ephone-feedback .mailbox-card-unseal-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  margin-left: 8px;
+  color: #111111;
+}
+
+/* 空状态 */
+#ephone-feedback .mailbox-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 16px;
+  border: 1px dashed #111111;
+  text-align: center;
+}
+
+#ephone-feedback .mailbox-empty-icon {
+  margin-bottom: 8px;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-empty-text {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: #444444;
+}
+
+/* 公开广场列表 */
+#ephone-feedback .mailbox-public-board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#ephone-feedback .mailbox-public-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#ephone-feedback .mailbox-public-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  text-align: left;
+}
+
+#ephone-feedback .mailbox-public-card:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-public-card:hover .mailbox-timestamp,
+#ephone-feedback .mailbox-public-card:hover .mailbox-signature {
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-public-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+#ephone-feedback .mailbox-signature {
+  font-weight: 600;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-timestamp {
+  color: #666666;
+  font-size: 10px;
+}
+
+#ephone-feedback .mailbox-public-heading {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ephone-feedback .mailbox-btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+#ephone-feedback .mailbox-btn-secondary:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* -------------------------------------------------------------
+   2. 写信页：心愿信笺撰写 (Write a Letter)
+   ------------------------------------------------------------- */
+#ephone-feedback .mailbox-parchment-sheet {
+  background: #ffffff;
+}
+
+#ephone-feedback .mailbox-sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #111111;
+  margin-bottom: 20px;
+}
+
+#ephone-feedback .mailbox-stamp-box {
+  flex-shrink: 0;
+}
+
+#ephone-feedback .stamp-border {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 52px;
+  border: 1px dashed #111111;
+  padding: 2px;
+}
+
+#ephone-feedback .stamp-icon {
+  margin-bottom: 2px;
+}
+
+#ephone-feedback .stamp-text {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+#ephone-feedback .mailbox-sheet-motto {
+  flex: 1;
+  min-width: 0;
+}
+
+#ephone-feedback .mailbox-sheet-motto-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#ephone-feedback .motto-line {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+#ephone-feedback .mailbox-btn-guide-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+#ephone-feedback .mailbox-btn-guide-tag:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .motto-note {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: #444444;
+  line-height: 1.5;
+}
+
+/* 表单字段通用 */
+#ephone-feedback .mailbox-field {
+  margin-bottom: 18px;
+}
+
+#ephone-feedback .mailbox-field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin-bottom: 8px;
+}
+
+#ephone-feedback .label-star {
+  display: inline-flex;
+}
+
+/* 邮戳印章式分类选择器 (Stamp Pills) */
+#ephone-feedback .mailbox-stamp-group {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+#ephone-feedback .mailbox-stamp-pill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+#ephone-feedback .mailbox-stamp-pill input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#ephone-feedback .mailbox-stamp-pill .pill-symbol {
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+#ephone-feedback .mailbox-stamp-pill .pill-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+#ephone-feedback .mailbox-stamp-pill.is-active,
+#ephone-feedback .mailbox-stamp-pill:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* 输入框包装 */
+#ephone-feedback .mailbox-input-wrap input {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+/* 信纸横线式多行文本书写区 */
+#ephone-feedback .mailbox-textarea-wrap {
+  position: relative;
+  border: 1px solid #111111;
+  background: #ffffff;
+}
+
+#ephone-feedback .mailbox-textarea-wrap textarea {
+  display: block;
+  width: 100%;
+  padding: 14px 14px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.8;
+  resize: vertical;
+  min-height: 150px;
+}
+
+#ephone-feedback .mailbox-textarea-wrap.mini textarea {
+  min-height: 80px;
+  padding: 10px 12px;
+}
+
+/* 随信附件上传卡 */
+#ephone-feedback .mailbox-file-label {
+  display: block;
+  cursor: pointer;
+}
+
+#ephone-feedback .mailbox-file-label input[type="file"] {
+  display: none;
+}
+
+#ephone-feedback .mailbox-file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px dashed #111111;
+  background: #ffffff;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+#ephone-feedback .mailbox-file-card:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-file-card.mini {
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+
+#ephone-feedback .mailbox-file-icon {
+  display: inline-flex;
+}
+
+/* 契约验证区 */
+#ephone-feedback .mailbox-challenge-section {
+  margin: 18px 0;
+  text-align: center;
+}
+
+#ephone-feedback .mailbox-challenge-title {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+#ephone-feedback .mailbox-challenge {
+  display: flex;
+  justify-content: center;
+  min-height: 65px;
+}
+
+/* 封信操作栏与加盖印章按钮 (Seal Button) */
+#ephone-feedback .mailbox-actions-bar {
+  margin-top: 20px;
+}
+
+#ephone-feedback .mailbox-btn-seal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 20px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px #111111;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  transition: all 0.2s ease;
+}
+
+#ephone-feedback .mailbox-btn-seal:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-btn-seal:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+#ephone-feedback .mailbox-btn-seal.mini {
+  padding: 10px 14px;
+  box-shadow: none;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+/* -------------------------------------------------------------
+   3. 详情与往来回信页 (Letter Exchanges)
+   ------------------------------------------------------------- */
+#ephone-feedback .mailbox-thread-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+#ephone-feedback .mailbox-thread-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid #111111;
+  background: #ffffff;
+}
+
+#ephone-feedback .mailbox-thread-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#ephone-feedback .meta-tag {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+#ephone-feedback .meta-kind {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#ephone-feedback .meta-date {
+  font-size: 10px;
+  color: #666666;
+}
+
+#ephone-feedback .mailbox-thread-postmark {
+  color: #111111;
+}
+
+/* 往来信札流 */
+#ephone-feedback .mailbox-thread-scroll {
+  display: flex;
+  flex-direction: column;
+}
+
+#ephone-feedback .mailbox-scroll-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#ephone-feedback .mailbox-missive {
+  display: flex;
+  flex-direction: column;
+  max-width: 90%;
+}
+
+/* 我寄出的信 */
+#ephone-feedback .mailbox-missive.missive-seeker {
+  align-self: flex-end;
+}
+
+#ephone-feedback .mailbox-missive.missive-seeker .missive-frame {
+  border: 1px solid #111111;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+/* 掌柜回信 (专属皇家信函双边框与反色印标) */
+#ephone-feedback .mailbox-missive.missive-guardian {
+  align-self: flex-start;
+}
+
+#ephone-feedback .mailbox-missive.missive-guardian .missive-frame {
+  border: 1px solid #111111;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px #111111;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+#ephone-feedback .missive-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed #111111;
+  margin-bottom: 8px;
+}
+
+#ephone-feedback .missive-author {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#ephone-feedback .missive-time {
+  font-size: 10px;
+  color: #666666;
+}
+
+#ephone-feedback .missive-body {
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+#ephone-feedback .missive-attachment {
+  margin-top: 10px;
+}
+
+#ephone-feedback .mailbox-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid #111111;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+#ephone-feedback .mailbox-attachment-btn:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* 随信展开的拍立得照片卡 */
+#ephone-feedback .mailbox-image-viewer {
+  margin-top: 10px;
+  padding: 6px;
+  border: 1px solid #111111;
+  background: #ffffff;
+}
+
+#ephone-feedback .mailbox-framed-photo {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+/* 续写回信抽屉 */
+#ephone-feedback .mailbox-reply-drawer {
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid #111111;
+  background: #ffffff;
+}
+
+#ephone-feedback .mailbox-reply-prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+/* 焚毁信札危险操作 */
+#ephone-feedback .mailbox-danger-zone {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+#ephone-feedback .mailbox-burn-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #111111;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #111111;
+  transition: all 0.15s ease;
+}
+
+#ephone-feedback .mailbox-burn-btn:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* -------------------------------------------------------------
+   4. 作者寄语 · 投稿须知 弹窗 (Submission Guide Modal)
+   ------------------------------------------------------------- */
+#ephone-feedback .mailbox-notice-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  transition: opacity 0.2s ease;
+}
+
+#ephone-feedback .mailbox-notice-backdrop[hidden] {
+  display: none !important;
+}
+
+#ephone-feedback .mailbox-notice-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 460px);
+  max-height: min(90vh, 600px);
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid #111111;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px #111111, 0 12px 28px rgba(0, 0, 0, 0.25);
+  padding: 24px 20px 20px;
+  animation: mailboxNoticePop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes mailboxNoticePop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+#ephone-feedback .mailbox-notice-decor {
+  pointer-events: none;
+}
+
+#ephone-feedback .mailbox-notice-header {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #111111;
+}
+
+#ephone-feedback .mailbox-notice-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  color: #333333;
+  margin-bottom: 4px;
+}
+
+#ephone-feedback .notice-badge-star svg {
+  width: 9px;
+  height: 9px;
+}
+
+#ephone-feedback .mailbox-notice-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-notice-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 4px;
+  margin-bottom: 18px;
+}
+
+#ephone-feedback .mailbox-notice-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px dashed #111111;
+  background: #ffffff;
+}
+
+#ephone-feedback .notice-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#ephone-feedback .notice-item-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+#ephone-feedback .notice-item-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #111111;
+}
+
+#ephone-feedback .notice-item-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #333333;
+  word-break: break-word;
+}
+
+#ephone-feedback .mailbox-notice-footer {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #111111;
+}
+
+#ephone-feedback .mailbox-btn-notice-suppress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #555555;
+  transition: all 0.15s ease;
+}
+
+#ephone-feedback .mailbox-btn-notice-suppress:hover {
+  background: #f0f0f0;
+  color: #111111;
+}
+
+#ephone-feedback .mailbox-btn-notice-ack {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: #111111;
+  border: 1px solid #111111;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  transition: all 0.15s ease;
+}
+
+#ephone-feedback .mailbox-btn-notice-ack:disabled {
+  background: #ffffff;
+  color: #888888;
+  border-color: #cccccc;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+#ephone-feedback .mailbox-btn-notice-ack:not(:disabled):hover {
+  background: #ffffff;
+  color: #111111;
+  box-shadow: inset 0 0 0 1px #111111;
+}
+
+#ephone-feedback .ack-countdown {
+  font-family: monospace;
+  font-size: 12px;
+}
+
+/* 移动端细致响应式 */
+@media (max-width: 600px) {
+  #ephone-feedback.mailbox-overlay {
+    padding: 0;
+  }
+  #ephone-feedback .mailbox-envelope {
+    width: 100%;
+    height: 100%;
+    border: none;
+    box-shadow: none;
+  }
+  #ephone-feedback .mailbox-corner {
+    display: none;
+  }
+  #ephone-feedback .mailbox-header {
+    min-height: calc(56px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+  #ephone-feedback .mailbox-viewport {
+    padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  #ephone-feedback .mailbox-stamp-group {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  #ephone-feedback .mailbox-missive {
+    max-width: 96%;
+  }
+}

@@ -19,6 +19,14 @@
     
     // 检查此消息前面是否有被隐藏的思考过程
     const msgIndex = chat.history.findIndex(m => m.timestamp === timestamp);
+    const message = chat.history[msgIndex];
+    const downloadAiVoiceBtn = document.getElementById('download-ai-voice-btn');
+    if (downloadAiVoiceBtn) {
+      downloadAiVoiceBtn.style.display = message?.type === 'voice_message' && message.role === 'assistant'
+        && !chat.isGroup && chat.settings.enableTts !== false
+        && document.querySelector(`.message-bubble[data-timestamp="${timestamp}"] .voice-message-body[data-text]`)
+        ? 'flex' : 'none';
+    }
     const viewThoughtChainBtn = document.getElementById('view-thought-chain-btn');
     if (viewThoughtChainBtn) {
         let foundHiddenThought = false;
@@ -53,6 +61,15 @@
     document.getElementById('message-actions-modal').classList.remove('visible');
     activeMessageTimestamp = null;
   }
+
+  document.getElementById('download-ai-voice-btn')?.addEventListener('click', () => {
+    const timestamp = activeMessageTimestamp;
+    const chatId = state.activeChatId;
+    hideMessageActions();
+    if (timestamp && typeof window.downloadAiVoiceMessage === 'function') {
+      window.downloadAiVoiceMessage(chatId, timestamp);
+    }
+  });
 
   // ========== 排除/恢复消息 (省Token) ==========
   async function toggleExcludeMessage() {

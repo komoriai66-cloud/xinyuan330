@@ -82,8 +82,8 @@
     if (screenToShow) screenToShow.classList.add('active');
     if (screenId === 'chat-interface-screen') {
       window.updateListenTogetherIconProxy(state.activeChatId);
-      // 离开聊天时消息 DOM 已释放；从聊天设置返回后需按当前记录重新渲染。
-      if (currentActiveScreen?.id === 'chat-settings-screen' && state.activeChatId) {
+      // 从聊天设置或长期记忆返回时，重新渲染当前消息并定位到最新一条。
+      if (['chat-settings-screen', 'long-term-memory-screen'].includes(currentActiveScreen?.id) && state.activeChatId) {
         renderChatInterface(state.activeChatId);
       }
     }

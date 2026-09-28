@@ -19,8 +19,12 @@ async function checkAndTriggerAutoSummary(chatId) {
       .filter(message => !message?.isHidden || (message?.role === 'system' && typeof message?.content === 'string' && message.content.includes('内心独白'))).length;
     const autoInterval = vm.settings.autoExtractionMsgInterval || 20;
 
-    if (unextractedMessages >= autoInterval) {
-      console.log(`[变量记忆] 达到自动提取阈值 (${unextractedMessages}/${autoInterval})，开始提取...`);
+    if (vm.settings.autoExtractionPending && unextractedMessages === 0) {
+      vm.settings.autoExtractionPending = false;
+      await db.chats.put(chat);
+    }
+    if (unextractedMessages >= autoInterval || (vm.settings.autoExtractionPending && unextractedMessages > 0)) {
+      console.log(`[变量记忆] ${vm.settings.autoExtractionPending ? '继续未完成的提取' : '达到自动提取阈值'} (${unextractedMessages}/${autoInterval})，开始提取...`);
       await triggerVectorMemorySummary(chatId);
     }
   } else {

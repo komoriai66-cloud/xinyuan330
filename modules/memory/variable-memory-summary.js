@@ -101,6 +101,25 @@ async function executeVectorExtraction(chat, messages, updateTimestamp = false) 
   }
 }
 
+async function executeVectorExtractionInBatches(chat, messages, updateTimestamp = false) {
+  const maxMessagesPerBatch = 100;
+  const maxCharsPerBatch = 40000;
+  let batch = [];
+  let batchChars = 0;
+
+  for (const message of messages) {
+    const messageChars = String(message?.content || '').length;
+    if (batch.length && (batch.length >= maxMessagesPerBatch || batchChars + messageChars > maxCharsPerBatch)) {
+      await executeVectorExtraction(chat, batch, updateTimestamp);
+      batch = [];
+      batchChars = 0;
+    }
+    batch.push(message);
+    batchChars += messageChars;
+  }
+  if (batch.length) await executeVectorExtraction(chat, batch, updateTimestamp);
+}
+
 // ===== 变量记忆总结模式选择菜单 =====
 async function openVectorSummaryMenu(chat) {
   const vm = window.vectorMemoryManager.getVariableMemory(chat);
@@ -210,7 +229,7 @@ async function handleVectorNewMessagesSummary(chat) {
 
   showToast(`正在提取 ${newMessages.length} 条新消息...`, 'info');
   try {
-    await executeVectorExtraction(chat, newMessages, true);
+    await executeVectorExtractionInBatches(chat, newMessages, true);
   } catch (error) {
     console.error('[变量记忆-新消息提取] 错误:', error);
     showToast('提取失败：' + error.message, 'error');
@@ -285,7 +304,7 @@ async function handleVectorRangeSummary(chat) {
 
       showToast(`正在提取第 ${start}-${end} 条消息...`, 'info');
       try {
-        await executeVectorExtraction(chat, validMessages, updateTimestamp);
+        await executeVectorExtractionInBatches(chat, validMessages, updateTimestamp);
       } catch (error) {
         console.error('[变量记忆-范围提取] 错误:', error);
         showToast('提取失败：' + error.message, 'error');
@@ -343,11 +362,23 @@ async function triggerVectorMemorySummary(chatId, force = false) {
     }
 
     if (messagesToProcess.length === 0) {
+      if (!force && vm.settings.autoExtractionPending) {
+        vm.settings.autoExtractionPending = false;
+        await db.chats.put(chat);
+      }
       if (force) showToast('没有新的对话需要提取', 'info');
       return;
     }
 
-    await executeVectorExtraction(chat, messagesToProcess, !force);
+    if (!force) {
+      vm.settings.autoExtractionPending = true;
+      await db.chats.put(chat);
+    }
+    await executeVectorExtractionInBatches(chat, messagesToProcess, !force);
+    if (!force) {
+      vm.settings.autoExtractionPending = false;
+      await db.chats.put(chat);
+    }
   } catch (e) {
     console.error('[变量记忆] 提取失败:', e);
     showToast('变量记忆提取失败: ' + e.message, 'error');

@@ -18,10 +18,16 @@
                overflow: visible !important;
            }
 
-           /* 2. 功能按钮：灰色方块，自动填满 */
+           /* 浅色模式下，菜单和按钮统一使用纯白底色 */
+           #phone-screen:not(.dark-mode) #message-actions-modal #custom-modal {
+               background-color: #fff !important;
+           }
+
+           /* 2. 功能按钮：自动填满 */
            #message-actions-modal .custom-modal-footer button:not(#cancel-message-action-btn) {
                /* 基础宽度：约一半减去间隙 */
                width: 48% !important;
+               box-sizing: border-box;
                /* 【关键修复】：允许按钮自动拉伸！这样如果是奇数个，最后一个会自动占满一行 */
                flex-grow: 1 !important;
 
@@ -34,16 +40,13 @@
                padding: 15px 0 !important;
                /* 保持高度 */
 
-               /* 外观：浅灰色圆角 */
-               background-color: #f2f2f7 !important;
+               /* 外观：纯白圆角 */
+               background-color: #fff !important;
                color: #007aff !important;
                border-radius: 10px !important;
-               border: none !important;
+               border: 1px solid #d8d8de !important;
                font-size: 16px !important;
                font-weight: 500 !important;
-
-               /* 清除干扰 */
-               border-bottom: none !important;
            }
 
            /* 3. 强制隐藏被 JS 设置为隐藏的按钮 (解决单聊显示群聊按钮的问题) */
@@ -51,15 +54,14 @@
                display: none !important;
            }
 
-           /* 4. 取消按钮：样式完全统一（灰色背景、正常字体） */
+           /* 4. 取消按钮：纯白背景、正常字体 */
            #message-actions-modal #cancel-message-action-btn {
                width: 100% !important;
                flex-grow: 0 !important;
                margin-top: 5px !important;
                padding: 15px 0 !important;
 
-               /* 【修改】背景色改为和其他按钮一样的浅灰 */
-               background-color: #f2f2f7 !important;
+               background-color: #fff !important;
 
                color: #007aff !important;
 
@@ -67,7 +69,8 @@
                font-weight: 500 !important;
 
                border-radius: 10px !important;
-               border: none !important;
+               border: 1px solid #d8d8de !important;
+               box-sizing: border-box;
                box-shadow: none !important;
                /* 去掉阴影 */
            }
@@ -76,6 +79,7 @@
            #phone-screen.dark-mode #message-actions-modal .custom-modal-footer button:not(#cancel-message-action-btn),
            #phone-screen.dark-mode #message-actions-modal #cancel-message-action-btn {
                background-color: #2c2c2e !important;
+               border-color: #48484a !important;
                /* 统一深灰块 */
                color: #0a84ff !important;
            }
@@ -384,4 +388,793 @@
            #phone-screen.dark-mode #share-link-modal .share-link-btn-cancel:hover {
                background: rgba(255, 255, 255, 0.14);
                color: #ffffff;
+           }
+
+           /* ============================================================ */
+           /* ▼▼▼ 转发弹窗全面美化与 iOS 开关/二次确认/防手滑屏蔽样式 ▼▼▼ */
+           /* ============================================================ */
+
+           .forward-custom-modal,
+           .forward-blocklist-modal {
+               align-items: center;
+               justify-content: center;
+               background-color: rgba(15, 23, 42, 0.45);
+               backdrop-filter: blur(10px);
+               -webkit-backdrop-filter: blur(10px);
+               z-index: 10000;
+           }
+
+           .forward-modal-card {
+               width: 360px;
+               max-width: calc(100% - 28px);
+               height: 78vh;
+               max-height: 640px;
+               min-height: 480px;
+               border-radius: 20px;
+               background: #ffffff;
+               box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.06);
+               display: flex;
+               flex-direction: column;
+               overflow: hidden;
+               border: 1px solid rgba(0, 0, 0, 0.08);
+               position: relative;
+           }
+
+           .forward-step-panel {
+               display: flex;
+               flex-direction: column;
+               width: 100%;
+               height: 100%;
+               overflow: hidden;
+           }
+
+           /* 头部设计 */
+           .forward-card-header {
+               display: flex;
+               align-items: center;
+               justify-content: space-between;
+               padding: 14px 18px 12px 18px;
+               border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+               background: #ffffff;
+               flex-shrink: 0;
+           }
+
+           .forward-header-title-wrap {
+               display: flex;
+               align-items: center;
+               gap: 8px;
+           }
+
+           .forward-title {
+               font-size: 17px;
+               font-weight: 700;
+               color: #1e293b;
+               letter-spacing: -0.3px;
+           }
+
+           .forward-selected-count-badge {
+               font-size: 11px;
+               font-weight: 600;
+               background: rgba(0, 122, 255, 0.1);
+               color: var(--accent-color, #007aff);
+               padding: 2px 8px;
+               border-radius: 20px;
+               letter-spacing: 0;
+           }
+
+           .forward-badge-tip {
+               font-size: 11px;
+               color: #64748b;
+               background: #f1f5f9;
+               padding: 3px 8px;
+               border-radius: 6px;
+           }
+
+           .forward-header-actions {
+               display: flex;
+               align-items: center;
+               gap: 6px;
+           }
+
+           .forward-header-btn {
+               border: none;
+               background: #f1f5f9;
+               color: #475569;
+               font-size: 12px;
+               font-weight: 500;
+               border-radius: 12px;
+               padding: 5px 9px;
+               display: inline-flex;
+               align-items: center;
+               gap: 4px;
+               cursor: pointer;
+               transition: all 0.2s ease;
+               outline: none;
+           }
+
+           .forward-header-btn:hover {
+               background: #e2e8f0;
+               color: #0f172a;
+           }
+
+           .forward-header-btn:active {
+               transform: scale(0.95);
+           }
+
+           .forward-close-btn {
+               border: none;
+               background: #f1f5f9;
+               color: #64748b;
+               width: 28px;
+               height: 28px;
+               border-radius: 50%;
+               display: flex;
+               align-items: center;
+               justify-content: center;
+               font-size: 18px;
+               line-height: 1;
+               cursor: pointer;
+               transition: all 0.2s ease;
+           }
+
+           .forward-close-btn:hover {
+               background: #e2e8f0;
+               color: #0f172a;
+           }
+
+           .forward-back-to-step1-btn {
+               border: none;
+               background: #f1f5f9;
+               color: #334155;
+               width: 28px;
+               height: 28px;
+               border-radius: 50%;
+               display: flex;
+               align-items: center;
+               justify-content: center;
+               cursor: pointer;
+               transition: all 0.2s ease;
+           }
+
+           .forward-back-to-step1-btn:hover {
+               background: #e2e8f0;
+               color: #007aff;
+           }
+
+           /* 工具栏：搜索与排序过滤 */
+           .forward-toolbar-section {
+               padding: 10px 16px;
+               background: #fbfcfe;
+               border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+               flex-shrink: 0;
+               display: flex;
+               flex-direction: column;
+               gap: 8px;
+           }
+
+           .forward-search-wrapper {
+               display: flex;
+               align-items: center;
+               position: relative;
+               width: 100%;
+           }
+
+           .forward-search-icon {
+               position: absolute;
+               left: 10px;
+               color: #94a3b8;
+               pointer-events: none;
+           }
+
+           .forward-search-wrapper input {
+               width: 100%;
+               padding: 7px 30px 7px 32px;
+               background: #ffffff;
+               border: 1px solid #e2e8f0;
+               border-radius: 10px;
+               font-size: 13px;
+               color: #1e293b;
+               outline: none;
+               transition: border-color 0.2s, box-shadow 0.2s;
+               box-sizing: border-box;
+           }
+
+           .forward-search-wrapper input:focus {
+               border-color: var(--accent-color, #007aff);
+               box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+           }
+
+           .forward-search-clear-btn {
+               position: absolute;
+               right: 8px;
+               border: none;
+               background: #cbd5e1;
+               color: #475569;
+               width: 18px;
+               height: 18px;
+               border-radius: 50%;
+               font-size: 12px;
+               line-height: 1;
+               cursor: pointer;
+               display: flex;
+               align-items: center;
+               justify-content: center;
+               padding: 0;
+           }
+
+           .forward-filter-bar {
+               display: flex;
+               align-items: center;
+               justify-content: space-between;
+               font-size: 12px;
+           }
+
+           .forward-sort-group {
+               display: flex;
+               align-items: center;
+               gap: 5px;
+               color: #64748b;
+           }
+
+           .forward-sort-label {
+               font-weight: 500;
+           }
+
+           .forward-sort-dropdown {
+               background: #ffffff;
+               border: 1px solid #e2e8f0;
+               border-radius: 8px;
+               padding: 3px 6px;
+               font-size: 12px;
+               color: #334155;
+               outline: none;
+               cursor: pointer;
+           }
+
+           .forward-quick-actions {
+               display: flex;
+               gap: 6px;
+           }
+
+           .forward-quick-btn {
+               border: none;
+               background: transparent;
+               color: var(--accent-color, #007aff);
+               font-size: 12px;
+               font-weight: 600;
+               cursor: pointer;
+               padding: 2px 4px;
+               border-radius: 4px;
+               transition: background-color 0.15s;
+           }
+
+           .forward-quick-btn:hover {
+               background: rgba(0, 122, 255, 0.08);
+           }
+
+           /* 联系人列表体 */
+           .forward-list-body {
+               flex: 1 1 auto;
+               overflow-y: auto;
+               padding: 4px 0;
+               -webkit-overflow-scrolling: touch;
+           }
+
+           .forward-contact-row {
+               display: flex;
+               align-items: center;
+               justify-content: space-between;
+               padding: 10px 16px;
+               cursor: pointer;
+               transition: background-color 0.15s ease;
+               border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+               user-select: none;
+           }
+
+           .forward-contact-row:hover {
+               background-color: #f8fafc;
+           }
+
+           .forward-contact-row.is-active {
+               background-color: rgba(0, 122, 255, 0.04);
+           }
+
+           .forward-contact-left {
+               display: flex;
+               align-items: center;
+               gap: 12px;
+               min-width: 0;
+               flex: 1;
+           }
+
+           .forward-avatar-wrap {
+               position: relative;
+               flex-shrink: 0;
+           }
+
+           .forward-contact-avatar {
+               width: 42px;
+               height: 42px;
+               border-radius: 50%;
+               object-fit: cover;
+               background: #e2e8f0;
+               box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+               display: block;
+           }
+
+           .forward-group-badge {
+               position: absolute;
+               bottom: -2px;
+               right: -2px;
+               background: #3b82f6;
+               color: #ffffff;
+               font-size: 9px;
+               padding: 1px 4px;
+               border-radius: 6px;
+               font-weight: bold;
+               border: 1px solid #ffffff;
+           }
+
+           .forward-contact-meta {
+               min-width: 0;
+               display: flex;
+               flex-direction: column;
+               gap: 2px;
+           }
+
+           .forward-contact-name {
+               font-size: 14px;
+               font-weight: 600;
+               color: #1e293b;
+               white-space: nowrap;
+               overflow: hidden;
+               text-overflow: ellipsis;
+           }
+
+           .forward-contact-desc {
+               font-size: 11px;
+               color: #94a3b8;
+               white-space: nowrap;
+               overflow: hidden;
+               text-overflow: ellipsis;
+           }
+
+           /* iOS 开关组件 (Switch Toggle) */
+           .forward-switch {
+               position: relative;
+               display: inline-block;
+               width: 44px;
+               height: 25px;
+               flex-shrink: 0;
+               pointer-events: auto;
+           }
+
+           .forward-switch input {
+               opacity: 0;
+               width: 0;
+               height: 0;
+               position: absolute;
+           }
+
+           .forward-slider {
+               position: absolute;
+               cursor: pointer;
+               top: 0;
+               left: 0;
+               right: 0;
+               bottom: 0;
+               background-color: #e2e8f0;
+               transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+               border-radius: 25px;
+               box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+           }
+
+           .forward-slider:before {
+               position: absolute;
+               content: "";
+               height: 21px;
+               width: 21px;
+               left: 2px;
+               bottom: 2px;
+               background-color: #ffffff;
+               transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+               border-radius: 50%;
+               box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+           }
+
+           .forward-switch input:checked + .forward-slider {
+               background-color: var(--accent-color, #34c759);
+           }
+
+           .forward-switch input:checked + .forward-slider:before {
+               transform: translateX(19px);
+           }
+
+           /* 底部操作区 */
+           .forward-card-footer {
+               padding: 12px 18px 14px 18px;
+               border-top: 1px solid rgba(0, 0, 0, 0.06);
+               background: #fbfcfe;
+               display: flex;
+               gap: 10px;
+               justify-content: flex-end;
+               flex-shrink: 0;
+           }
+
+           .forward-card-footer button {
+               border-radius: 10px;
+               padding: 9px 18px;
+               font-size: 14px;
+               font-weight: 600;
+               cursor: pointer;
+               transition: all 0.2s ease;
+               display: inline-flex;
+               align-items: center;
+               justify-content: center;
+               gap: 5px;
+           }
+
+           .forward-next-step-btn {
+               background: var(--accent-color, #007aff) !important;
+               color: #ffffff !important;
+               border: none !important;
+               box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
+           }
+
+           .forward-next-step-btn:hover {
+               filter: brightness(1.08);
+           }
+
+           .forward-next-step-btn:active {
+               transform: scale(0.96);
+           }
+
+           .forward-btn-arrow {
+               font-size: 15px;
+               line-height: 1;
+           }
+
+           /* 步骤 2: 二次确认界面 */
+           .forward-confirm-body {
+               flex: 1 1 auto;
+               overflow-y: auto;
+               padding: 14px 18px;
+               display: flex;
+               flex-direction: column;
+               gap: 16px;
+           }
+
+           .forward-confirm-section {
+               background: #f8fafc;
+               border: 1px solid #e2e8f0;
+               border-radius: 14px;
+               padding: 12px 14px;
+               display: flex;
+               flex-direction: column;
+               gap: 10px;
+           }
+
+           .forward-section-header {
+               display: flex;
+               align-items: center;
+               justify-content: space-between;
+           }
+
+           .forward-section-title {
+               font-size: 13px;
+               font-weight: 700;
+               color: #334155;
+           }
+
+           .forward-section-desc {
+               font-size: 11px;
+               color: #94a3b8;
+           }
+
+           .forward-confirm-targets-wrap {
+               display: flex;
+               flex-wrap: wrap;
+               gap: 8px;
+               max-height: 100px;
+               overflow-y: auto;
+           }
+
+           .forward-target-chip {
+               display: inline-flex;
+               align-items: center;
+               gap: 6px;
+               background: #ffffff;
+               border: 1px solid #cbd5e1;
+               border-radius: 20px;
+               padding: 3px 8px 3px 4px;
+               box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+               font-size: 12px;
+               color: #1e293b;
+               transition: all 0.15s ease;
+           }
+
+           .forward-target-chip img {
+               width: 22px;
+               height: 22px;
+               border-radius: 50%;
+               object-fit: cover;
+           }
+
+           .forward-target-chip-name {
+               max-width: 90px;
+               white-space: nowrap;
+               overflow: hidden;
+               text-overflow: ellipsis;
+               font-weight: 500;
+           }
+
+           .forward-target-chip-remove {
+               border: none;
+               background: #ef4444;
+               color: #ffffff;
+               width: 16px;
+               height: 16px;
+               border-radius: 50%;
+               font-size: 11px;
+               line-height: 1;
+               cursor: pointer;
+               display: flex;
+               align-items: center;
+               justify-content: center;
+               padding: 0;
+               transition: transform 0.15s ease;
+           }
+
+           .forward-target-chip-remove:hover {
+               transform: scale(1.15);
+           }
+
+           /* 消息微调勾选列表 */
+           .forward-msg-range-actions {
+               display: flex;
+               gap: 6px;
+           }
+
+           .forward-mini-btn {
+               border: none;
+               background: #e2e8f0;
+               color: #475569;
+               border-radius: 6px;
+               padding: 2px 7px;
+               font-size: 11px;
+               font-weight: 600;
+               cursor: pointer;
+           }
+
+           .forward-mini-btn:hover {
+               background: #cbd5e1;
+               color: #0f172a;
+           }
+
+           .forward-confirm-messages-list {
+               max-height: 230px;
+               overflow-y: auto;
+               display: flex;
+               flex-direction: column;
+               gap: 6px;
+               padding-right: 2px;
+           }
+
+           .forward-confirm-msg-item {
+               display: flex;
+               align-items: flex-start;
+               gap: 10px;
+               background: #ffffff;
+               border: 1px solid #e2e8f0;
+               border-radius: 10px;
+               padding: 8px 10px;
+               cursor: pointer;
+               transition: background-color 0.15s, border-color 0.15s;
+           }
+
+           .forward-confirm-msg-item:hover {
+               border-color: #cbd5e1;
+           }
+
+           .forward-confirm-msg-item.selected {
+               background: rgba(0, 122, 255, 0.03);
+               border-color: rgba(0, 122, 255, 0.3);
+           }
+
+           .forward-confirm-msg-cb {
+               margin-top: 3px;
+               accent-color: var(--accent-color, #007aff);
+               cursor: pointer;
+               width: 15px;
+               height: 15px;
+           }
+
+           .forward-confirm-msg-content {
+               flex: 1;
+               min-width: 0;
+           }
+
+           .forward-confirm-msg-author {
+               font-size: 11px;
+               font-weight: 600;
+               color: #64748b;
+               margin-bottom: 2px;
+           }
+
+           .forward-confirm-msg-text {
+               font-size: 12px;
+               color: #1e293b;
+               line-height: 1.4;
+               word-break: break-all;
+               display: -webkit-box;
+               -webkit-line-clamp: 2;
+               -webkit-box-orient: vertical;
+               overflow: hidden;
+           }
+
+           .forward-final-send-btn {
+               background: #10b981 !important;
+               color: #ffffff !important;
+               border: none !important;
+               box-shadow: 0 2px 8px rgba(16, 185, 129, 0.28);
+           }
+
+           .forward-final-send-btn:hover {
+               filter: brightness(1.08);
+           }
+
+           .forward-final-send-btn:active {
+               transform: scale(0.96);
+           }
+
+           /* 防手滑屏蔽设置弹窗 */
+           .forward-blocklist-card {
+               width: 320px;
+               max-width: calc(100% - 32px);
+               max-height: min(72vh, 520px);
+               height: auto;
+               border-radius: 20px;
+               background: #ffffff;
+               box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.22);
+               display: flex;
+               flex-direction: column;
+               overflow: hidden;
+               border: 1px solid rgba(0, 0, 0, 0.08);
+           }
+
+           .forward-blocklist-tip {
+               padding: 10px 16px;
+               font-size: 12px;
+               color: #e11d48;
+               background: #fff1f2;
+               line-height: 1.45;
+               border-bottom: 1px solid #ffe4e6;
+           }
+
+           .forward-blocklist-search {
+               padding: 8px 16px;
+               background: #f8fafc;
+               border-bottom: 1px solid #e2e8f0;
+           }
+
+           .forward-blocklist-search input {
+               width: 100%;
+               padding: 6px 10px;
+               border: 1px solid #cbd5e1;
+               border-radius: 8px;
+               font-size: 13px;
+               outline: none;
+               box-sizing: border-box;
+           }
+
+           .forward-blocklist-body {
+               flex: 1 1 auto;
+               overflow-y: auto;
+               max-height: 280px;
+               padding: 4px 0;
+           }
+
+           .forward-blocklist-item {
+               display: flex;
+               align-items: center;
+               justify-content: space-between;
+               padding: 8px 16px;
+               border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+               cursor: pointer;
+           }
+
+           .forward-blocklist-item:hover {
+               background: #f1f5f9;
+           }
+
+           .forward-blocklist-left {
+               display: flex;
+               align-items: center;
+               gap: 10px;
+           }
+
+           .forward-blocklist-left img {
+               width: 34px;
+               height: 34px;
+               border-radius: 50%;
+               object-fit: cover;
+           }
+
+           .forward-blocklist-name {
+               font-size: 13px;
+               font-weight: 600;
+               color: #1e293b;
+           }
+
+           /* 夜间模式适配 */
+           #phone-screen.dark-mode .forward-modal-card,
+           #phone-screen.dark-mode .forward-blocklist-card {
+               background: #1c1c1e;
+               border-color: rgba(255, 255, 255, 0.1);
+               box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+           }
+
+           #phone-screen.dark-mode .forward-card-header,
+           #phone-screen.dark-mode .forward-card-footer {
+               background: #1c1c1e;
+               border-color: rgba(255, 255, 255, 0.08);
+           }
+
+           #phone-screen.dark-mode .forward-title,
+           #phone-screen.dark-mode .forward-contact-name,
+           #phone-screen.dark-mode .forward-section-title,
+           #phone-screen.dark-mode .forward-blocklist-name {
+               color: #f1f5f9;
+           }
+
+           #phone-screen.dark-mode .forward-toolbar-section,
+           #phone-screen.dark-mode .forward-confirm-section,
+           #phone-screen.dark-mode .forward-blocklist-search {
+               background: #252528;
+               border-color: rgba(255, 255, 255, 0.06);
+           }
+
+           #phone-screen.dark-mode .forward-search-wrapper input,
+           #phone-screen.dark-mode .forward-sort-dropdown,
+           #phone-screen.dark-mode .forward-blocklist-search input {
+               background: #2c2c2e;
+               border-color: rgba(255, 255, 255, 0.12);
+               color: #f8fafc;
+           }
+
+           #phone-screen.dark-mode .forward-contact-row:hover,
+           #phone-screen.dark-mode .forward-blocklist-item:hover {
+               background-color: #2c2c2e;
+           }
+
+           #phone-screen.dark-mode .forward-contact-row.is-active {
+               background-color: rgba(10, 132, 255, 0.1);
+           }
+
+           #phone-screen.dark-mode .forward-header-btn,
+           #phone-screen.dark-mode .forward-close-btn,
+           #phone-screen.dark-mode .forward-back-to-step1-btn {
+               background: rgba(255, 255, 255, 0.1);
+               color: #cbd5e1;
+           }
+
+           #phone-screen.dark-mode .forward-slider {
+               background-color: #3a3a3c;
+           }
+
+           #phone-screen.dark-mode .forward-target-chip,
+           #phone-screen.dark-mode .forward-confirm-msg-item {
+               background: #2c2c2e;
+               border-color: rgba(255, 255, 255, 0.08);
+           }
+
+           #phone-screen.dark-mode .forward-target-chip-name,
+           #phone-screen.dark-mode .forward-confirm-msg-text {
+               color: #f1f5f9;
+           }
+
+           #phone-screen.dark-mode .forward-blocklist-tip {
+               background: #2e1017;
+               border-color: #4c111a;
+               color: #fda4af;
            }

@@ -1,0 +1,12 @@
+{
+  "name": "ephone-feedback-admin",
+  "main": "./admin-worker.js",
+  "compatibility_date": "2026-09-28",
+  "workers_dev": true,
+  "d1_databases": [
+    { "binding": "DB", "database_name": "ephone-feedback", "database_id": "6f67a870-b5b8-4b84-a3bf-dbe0456b8e71" }
+  ],
+  "ratelimits": [
+    { "name": "ADMIN_LIMITER", "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } }
+  ]
+}

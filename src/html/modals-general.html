@@ -224,14 +224,143 @@
       <div class="modal-footer"> <button class="cancel" id="cancel-share-target-btn"data-lang-key="cancel">取消</button> <button class="save" id="confirm-share-target-btn">确认分享</button> </div>
     </div>
   </div>
-  <div id="forward-target-modal" class="modal">
-    <div class="modal-content" style="height: 70%; display: flex; flex-direction: column;">
-      <div class="modal-header"> <span>转发到...</span> </div>
-      <div style="padding: 10px 15px; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
-        <input type="text" id="forward-target-search-input" placeholder="搜索联系人..." style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; font-size: 14px; background: var(--secondary-bg); color: var(--text-color);">
+  <div id="forward-target-modal" class="modal forward-custom-modal">
+    <div class="modal-content forward-modal-card">
+      <!-- 步骤 1: 选择目标联系人 -->
+      <div id="forward-step-select" class="forward-step-panel active">
+        <div class="modal-header forward-card-header">
+          <div class="forward-header-title-wrap">
+            <span class="forward-title">转发到...</span>
+            <span class="forward-selected-count-badge" id="forward-selected-count-badge">已选 0</span>
+          </div>
+          <div class="forward-header-actions">
+            <button type="button" class="forward-header-btn" id="forward-open-blocklist-btn" title="屏蔽设置（防止手滑）">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+              <span>防手滑屏蔽</span>
+            </button>
+            <button type="button" class="forward-close-btn" id="forward-modal-close-x" aria-label="关闭">×</button>
+          </div>
+        </div>
+
+        <div class="forward-toolbar-section">
+          <div class="forward-search-wrapper">
+            <svg class="forward-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="forward-target-search-input" placeholder="搜索角色、群聊..." autocomplete="off">
+            <button type="button" id="forward-search-clear-btn" class="forward-search-clear-btn" style="display: none;">×</button>
+          </div>
+
+          <div class="forward-filter-bar">
+            <div class="forward-sort-group">
+              <span class="forward-sort-label">排序方式:</span>
+              <select id="forward-sort-select" class="forward-sort-dropdown">
+                <option value="recent">最近活跃</option>
+                <option value="name">角色名称 (A-Z)</option>
+                <option value="name-desc">角色名称 (Z-A)</option>
+                <option value="created">创建时间</option>
+              </select>
+            </div>
+            <div class="forward-quick-actions">
+              <button type="button" id="forward-select-all-btn" class="forward-quick-btn">全选</button>
+              <button type="button" id="forward-clear-all-btn" class="forward-quick-btn">清空</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-body forward-list-body" id="forward-target-list">
+          <!-- 动态生成联系人列表，包含Switch开关 -->
+        </div>
+
+        <div class="modal-footer forward-card-footer">
+          <button type="button" class="cancel" id="cancel-forward-target-btn" data-lang-key="cancel">取消</button>
+          <button type="button" class="save forward-next-step-btn" id="confirm-forward-target-btn">
+            <span>下一步：核对确认</span>
+            <span class="forward-btn-arrow">→</span>
+          </button>
+        </div>
       </div>
-      <div class="modal-body" id="forward-target-list" style="padding: 0; flex: 1; overflow-y: auto;"> </div>
-      <div class="modal-footer"> <button class="cancel" id="cancel-forward-target-btn"data-lang-key="cancel">取消</button> <button class="save" id="confirm-forward-target-btn">确认转发</button> </div>
+
+      <!-- 步骤 2: 二次确认 (调整角色与转发条数) -->
+      <div id="forward-step-confirm" class="forward-step-panel" style="display: none;">
+        <div class="modal-header forward-card-header">
+          <div class="forward-header-title-wrap">
+            <button type="button" class="forward-back-to-step1-btn" id="forward-back-step1-btn" title="返回上一步">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <span class="forward-title">二次确认转发</span>
+          </div>
+          <span class="forward-badge-tip">支持微调条数与角色</span>
+        </div>
+
+        <div class="modal-body forward-confirm-body">
+          <!-- 目标角色卡片 -->
+          <div class="forward-confirm-section">
+            <div class="forward-section-header">
+              <span class="forward-section-title">接收目标 (<span id="forward-confirm-target-count">0</span>)</span>
+              <span class="forward-section-desc">点击角色标签可快速移除</span>
+            </div>
+            <div class="forward-confirm-targets-wrap" id="forward-confirm-targets-wrap">
+              <!-- 动态生成的角色胶囊，带移除按钮 -->
+            </div>
+          </div>
+
+          <!-- 消息微调区域 -->
+          <div class="forward-confirm-section">
+            <div class="forward-section-header">
+              <span class="forward-section-title">转发消息范围 (<span id="forward-confirm-msg-count">0</span> 条)</span>
+              <div class="forward-msg-range-actions">
+                <button type="button" id="forward-msg-select-all-btn" class="forward-mini-btn">全选</button>
+                <button type="button" id="forward-msg-reverse-btn" class="forward-mini-btn">反选</button>
+              </div>
+            </div>
+            <div class="forward-confirm-messages-list" id="forward-confirm-messages-list">
+              <!-- 动态生成勾选消息列表 -->
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer forward-card-footer">
+          <button type="button" class="cancel" id="forward-confirm-back-btn">返回修改</button>
+          <button type="button" class="save forward-final-send-btn" id="forward-final-send-btn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+            <span>立即确认转发</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 转发屏蔽设置模态框 (防手滑) -->
+  <div id="forward-blocklist-modal" class="modal forward-blocklist-modal">
+    <div class="modal-content forward-blocklist-card">
+      <div class="modal-header forward-card-header">
+        <div class="forward-header-title-wrap">
+          <span class="forward-title">转发屏蔽名单 (防手滑)</span>
+        </div>
+        <button type="button" class="forward-close-btn" id="forward-blocklist-close-x">×</button>
+      </div>
+      <div class="forward-blocklist-tip">
+        勾选后，该角色或群聊将<strong>从转发目标列表中隐藏</strong>，避免手滑误转发。可随时在此取消屏蔽。
+      </div>
+      <div class="forward-blocklist-search">
+        <input type="text" id="forward-blocklist-search-input" placeholder="筛选角色..." autocomplete="off">
+      </div>
+      <div class="modal-body forward-blocklist-body" id="forward-blocklist-items">
+        <!-- 动态生成待屏蔽联系人 -->
+      </div>
+      <div class="modal-footer forward-card-footer">
+        <button type="button" class="save" id="forward-blocklist-save-btn" style="width: 100%;">保存并生效</button>
+      </div>
     </div>
   </div>
   <div id="shared-history-viewer-modal" class="modal">
@@ -537,7 +666,7 @@
       <div class="custom-modal-footer"> 
         <button id="view-thought-chain-btn" style="display: none; color: var(--accent-color);">查看深度思考</button>
         <button id="edit-message-btn" data-lang-key="edit">编辑消息</button> <button id="copy-message-btn">复制文本</button> <button id="copy-timestamp-btn">复制时间戳</button> <button id="recall-message-btn">撤回</button> <button id="publish-to-announcement-btn" style="display: none;">发布到公告板</button>
-        <button id="translate-message-btn">翻译</button> <button id="quote-message-btn">引用</button> <button id="forward-message-btn">转发</button> <button id="select-message-btn">进入多选</button> <button id="cancel-message-action-btn" style="margin-top: 8px; border-radius: 8px; background-color: #f0f0f0;"data-lang-key="cancel">取消</button> </div>
+        <button id="translate-message-btn">翻译</button> <button id="quote-message-btn">引用</button> <button id="forward-message-btn">转发</button> <button id="select-message-btn">进入多选</button> <button id="download-ai-voice-btn" style="display: none;">下载 MP3</button> <button id="cancel-message-action-btn" style="margin-top: 8px; border-radius: 8px;" data-lang-key="cancel">取消</button> </div>
     </div>
   </div>
   <div id="post-actions-modal" class="modal">

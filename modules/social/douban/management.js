@@ -1,3 +1,5 @@
+  const getGlobalState = () => (typeof state !== 'undefined' && state) ? state : (window.state || {});
+
   async function openDeleteDoubanPostsModal() {
     const modal = document.getElementById('delete-douban-posts-modal');
     const listEl = document.getElementById('delete-douban-posts-list');
@@ -26,11 +28,12 @@
 
       // 获取作者头像
       let authorAvatar = 'https://i.postimg.cc/Pq2xJN1g/IMG-7301.jpg'; // 默认豆瓣头像
-      const character = state.chats[post.authorId];
+      const appState = getGlobalState();
+      const character = appState.chats ? appState.chats[post.authorId] : null;
       if (character) {
         authorAvatar = character.settings.aiAvatar;
       } else if (post.authorId === 'user') {
-        authorAvatar = state.qzoneSettings.avatar;
+        authorAvatar = appState.qzoneSettings?.avatar || 'https://i.postimg.cc/Pq2xJN1g/IMG-7301.jpg';
       }
 
       const postContent = post.content.length > 50 ? post.content.substring(0, 50) + '...' : post.content;
@@ -90,7 +93,8 @@
       document.getElementById('douban-settings-modal')?.classList.add('visible');
 
       // 如果当前在豆瓣页面，刷新列表
-      if (state.currentScreen === 'douban-screen') {
+      const appState = getGlobalState();
+      if (appState.currentScreen === 'douban-screen') {
         await renderDoubanScreen();
       }
 
@@ -168,10 +172,11 @@
     if (!confirmed) return;
     
     if (post.comments) {
-        const myNickname = state.globalSettings.doubanUserNickname || state.qzoneSettings.nickname || '我';
+        const appState = getGlobalState();
+        const myNickname = appState.globalSettings?.doubanUserNickname || appState.qzoneSettings?.nickname || '我';
         const newComments = [];
         post.comments.forEach(comment => {
-            const isUserComment = comment.isUser || comment.commenter === '我' || comment.commenter === state.qzoneSettings.nickname || comment.commenter === state.globalSettings.doubanUserNickname;
+            const isUserComment = comment.isUser || comment.commenter === '我' || comment.commenter === appState.qzoneSettings?.nickname || comment.commenter === appState.globalSettings?.doubanUserNickname;
             const displayCommenterName = isUserComment ? myNickname : comment.commenter;
             const commentId = btoa(unescape(encodeURIComponent(displayCommenterName + comment.text))).replace(/[^a-zA-Z0-9]/g, '');
             if (!selectedDoubanComments.has(commentId)) {
@@ -201,9 +206,10 @@
     }
     
     if (post.comments) {
-        const myNickname = state.globalSettings.doubanUserNickname || state.qzoneSettings.nickname || '我';
+        const appState = getGlobalState();
+        const myNickname = appState.globalSettings?.doubanUserNickname || appState.qzoneSettings?.nickname || '我';
         post.comments.forEach(comment => {
-            const isUserComment = comment.isUser || comment.commenter === '我' || comment.commenter === state.qzoneSettings.nickname || comment.commenter === state.globalSettings.doubanUserNickname;
+            const isUserComment = comment.isUser || comment.commenter === '我' || comment.commenter === appState.qzoneSettings?.nickname || comment.commenter === appState.globalSettings?.doubanUserNickname;
             const displayCommenterName = isUserComment ? myNickname : comment.commenter;
             const commentId = btoa(unescape(encodeURIComponent(displayCommenterName + comment.text))).replace(/[^a-zA-Z0-9]/g, '');
             if (selectedDoubanComments.has(commentId)) {
@@ -218,59 +224,52 @@
   
   async function forwardDoubanContent(content) {
     if (typeof openForwardTargetPicker === 'function') {
-        await openForwardTargetPicker();
-        
-        const confirmBtn = document.getElementById('confirm-forward-target-btn');
-        const newBtn = confirmBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
-        
-        newBtn.onclick = async () => {
-            const selectedTargetIds = Array.from(document.querySelectorAll('.forward-target-checkbox:checked'))
-                .map(cb => cb.dataset.chatId);
+        await openForwardTargetPicker({
+            customHandler: async (selectedTargetIds) => {
+                if (!selectedTargetIds || selectedTargetIds.length === 0) return alert("请选择要转发到的聊天。");
 
-            if (selectedTargetIds.length === 0) return alert("请选择要转发到的聊天。");
-            
-            const doubanMsg = {
-                role: 'user',
-                type: 'html',
-                timestamp: Date.now(),
-                content: content
-            };
-            
-            for (const targetId of selectedTargetIds) {
-                const targetChat = state.chats[targetId];
-                if (targetChat) {
-                    targetChat.history.push(doubanMsg);
-                    
-                    targetChat.history.push({
-                        role: 'system',
-                        content: `[系统提示：用户向你分享了豆瓣上的帖子/评论。请根据你的人设，对这些内容发表你的看法或吐槽。]`,
-                        timestamp: Date.now() + 1,
-                        isHidden: true
-                    });
-                    
-                    await db.chats.put(targetChat);
+                const doubanMsg = {
+                    role: 'user',
+                    type: 'html',
+                    timestamp: Date.now(),
+                    content: content
+                };
+
+                const appState = getGlobalState();
+                for (const targetId of selectedTargetIds) {
+                    const targetChat = appState.chats ? appState.chats[targetId] : null;
+                    if (targetChat) {
+                        targetChat.history.push(doubanMsg);
+
+                        targetChat.history.push({
+                            role: 'system',
+                            content: `[系统提示：用户向你分享了豆瓣上的帖子/评论。请根据你的人设，对这些内容发表你的看法或吐槽。]`,
+                            timestamp: Date.now() + 1,
+                            isHidden: true
+                        });
+
+                        await db.chats.put(targetChat);
+                    }
+                }
+
+                await showCustomAlert("转发成功", "豆瓣内容已成功转发到选定聊天。");
+
+                if (isDoubanSelectMode) toggleDoubanSelectMode();
+                if (isDoubanDetailSelectMode) toggleDoubanDetailSelectMode();
+
+                // 如果当前在被转发的聊天界面，触发AI回复
+                if (appState.activeChatId && selectedTargetIds.includes(appState.activeChatId)) {
+                    if (typeof renderChatInterface === 'function') {
+                        renderChatInterface(appState.activeChatId);
+                    }
+                    if (typeof triggerAiResponse === 'function') {
+                        triggerAiResponse();
+                    } else if (window.triggerAiResponse) {
+                        window.triggerAiResponse();
+                    }
                 }
             }
-            
-            document.getElementById('forward-target-modal').classList.remove('visible');
-            await showCustomAlert("转发成功", "豆瓣内容已转发。");
-            
-            if (isDoubanSelectMode) toggleDoubanSelectMode();
-            if (isDoubanDetailSelectMode) toggleDoubanDetailSelectMode();
-
-            // 如果当前在被转发的聊天界面，触发AI回复
-            if (state.activeChatId && selectedTargetIds.includes(state.activeChatId)) {
-                if (typeof renderChatInterface === 'function') {
-                    renderChatInterface(state.activeChatId);
-                }
-                if (typeof triggerAiResponse === 'function') {
-                    triggerAiResponse();
-                } else if (window.triggerAiResponse) {
-                    window.triggerAiResponse();
-                }
-            }
-        };
+        });
     }
   }
 
@@ -397,14 +396,15 @@
     const targetIds = Array.from(selectedItems).map(item => item.dataset.targetId);
 
     let targetNames = [];
+    const appState = getGlobalState();
     if (targetIds.includes('all')) {
       targetNames.push('所有动态');
     } else {
       if (targetIds.includes('user')) {
-        targetNames.push(`"${state.qzoneSettings.nickname}"`);
+        targetNames.push(`"${appState.qzoneSettings?.nickname || '我'}"`);
       }
       targetIds.forEach(id => {
-        const character = state.chats[id];
+        const character = appState.chats ? appState.chats[id] : null;
         if (character) {
           targetNames.push(`"${character.name}"`);
         }

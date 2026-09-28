@@ -1,0 +1,17 @@
+{
+  "name": "ephone-feedback-public",
+  "main": "./public-worker.js",
+  "compatibility_date": "2026-09-28",
+  "workers_dev": true,
+  "d1_databases": [
+    { "binding": "DB", "database_name": "ephone-feedback", "database_id": "6f67a870-b5b8-4b84-a3bf-dbe0456b8e71" }
+  ],
+  "ratelimits": [
+    { "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 12, "period": 60 } },
+    { "name": "READ_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }
+  ],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://wq70.github.io",
+    "TURNSTILE_HOSTNAMES": "wq70.github.io,localhost,127.0.0.1"
+  }
+}

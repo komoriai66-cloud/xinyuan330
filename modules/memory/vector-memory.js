@@ -1289,7 +1289,7 @@ ${formattedHistory}
           <h4>提取与触发规则</h4>
           <div class="vm-setting-item">
             <label>多少条新消息自动提取一次？</label>
-            <input type="number" id="vm-auto-interval" value="${s.autoExtractionMsgInterval || 20}" min="5" max="100" class="vm-input-full">
+            <input type="number" id="vm-auto-interval" value="${s.autoExtractionMsgInterval || 20}" min="5" max="9999" step="1" class="vm-input-full">
             <div style="font-size:11px;color:#999;margin-top:4px;">不用担心刷屏！现在基于绝对消息数量触发，严格锁定。</div>
           </div>
         </div>
@@ -1428,6 +1428,12 @@ ${formattedHistory}
   }
 
   saveSettingsFromUI(chat) {
+    const intervalInput = document.getElementById('vm-auto-interval');
+    const intervalText = intervalInput?.value.trim() || '';
+    const interval = Number(intervalText);
+    if (!intervalText || !Number.isSafeInteger(interval) || interval < 5 || interval > 9999) {
+      throw new Error('自动提取间隔请输入 5～9999 之间的整数');
+    }
     const vm = this.getVariableMemory(chat);
     const previousSignature = this._embeddingSignature(chat);
     vm.fragments.forEach(fragment => {
@@ -1437,7 +1443,7 @@ ${formattedHistory}
       const value = Number(document.getElementById(id)?.value);
       return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
     };
-    vm.settings.autoExtractionMsgInterval = numberValue('vm-auto-interval', 20, 5, 100);
+    vm.settings.autoExtractionMsgInterval = interval;
     vm.settings.topN = numberValue('vm-topn', 10, 1, 30);
     vm.settings.scoreWeights = {
       semantic: numberValue('vm-w-semantic', 0.4, 0, 10),

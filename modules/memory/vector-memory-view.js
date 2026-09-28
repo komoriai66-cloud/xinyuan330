@@ -391,6 +391,16 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
   `;
   document.body.appendChild(panel);
   let metadataEnrichmentRunning = false;
+  const savePanelSettings = () => {
+    try {
+      window.vectorMemoryManager.saveSettingsFromUI(chat);
+      return true;
+    } catch (error) {
+      showToast(error.message, 'error');
+      panel.querySelector('#vm-auto-interval')?.focus();
+      return false;
+    }
+  };
 
   // Tab切换
   panel.querySelectorAll('.vm-panel-tab').forEach(tab => {
@@ -567,7 +577,7 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
     reembedBtn.addEventListener('click', async () => {
       const confirmed = await showCustomConfirm('补全/重建向量', '将为缺失或与当前模型不一致的记忆重新请求向量，会消耗 Embedding API 额度。确定继续吗？');
       if (!confirmed) return;
-      window.vectorMemoryManager.saveSettingsFromUI(chat);
+      if (!savePanelSettings()) return;
       reembedBtn.disabled = true;
       reembedBtn.textContent = '处理中...';
       try {
@@ -629,7 +639,7 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
       }
       const confirmed = await showCustomConfirm('补全多语言信息', `将使用聊天模型整理 ${coverage.missing} 条待补全记忆的双语检索词，并在接口可用时重新生成向量。原记忆正文不会被覆盖，会消耗 API 额度。确定继续吗？`);
       if (!confirmed) return;
-      window.vectorMemoryManager.saveSettingsFromUI(chat);
+      if (!savePanelSettings()) return;
       metadataEnrichmentRunning = true;
       enrichMetadataBtn.textContent = '停止补全';
       try {
@@ -675,7 +685,7 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
       embeddingSignature: fragment.embeddingSignature
     }));
     try {
-      window.vectorMemoryManager.saveSettingsFromUI(chat);
+      if (!savePanelSettings()) return;
       const rows = await window.vectorMemoryManager.diagnoseRetrieval(chat, query, 10);
       diagnosticResults.innerHTML = '';
       if (!rows.length) {
@@ -713,11 +723,11 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
   const saveBtn = panel.querySelector('#vm-save-settings-btn');
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      window.vectorMemoryManager.saveSettingsFromUI(chat);
+      if (!savePanelSettings()) return;
       await db.chats.put(chat);
       panel.remove();
       renderVectorMemoryView();
-      showToast('设置已保存', 'success');
+      showToast(`设置已保存：每 ${vm.settings.autoExtractionMsgInterval} 条新消息自动提取一次`, 'success');
     });
   }
   
