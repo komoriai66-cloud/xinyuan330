@@ -8,6 +8,7 @@ const assetManifestPath = path.join(projectRoot, 'asset-manifest.json');
 const fragmentManifestPath = path.join(projectRoot, 'html-fragments.json');
 const scriptManifestPath = path.join(projectRoot, 'modules', 'bootstrap', 'html-fragment-manifest.js');
 const generatedFragmentDirectory = path.join(projectRoot, 'generated', 'html-fragments');
+const feedbackAssetRevision = 'main-sync-20260928';
 
 const fragments = [
   'document-head.html',
@@ -42,9 +43,11 @@ const fragmentScripts = fragments.map(fragment => ({
   source: fs.readFileSync(path.join(fragmentDirectory, fragment), 'utf8')
 }));
 
-const fragmentScriptPaths = fragmentScripts.map(
-  fragment => `generated/html-fragments/${fragment.outputName}`
-);
+const fragmentScriptPaths = fragmentScripts.map(fragment => {
+  const path = `generated/html-fragments/${fragment.outputName}`;
+  return ['document-head.js', 'api-settings-data.js'].includes(fragment.outputName)
+    ? `${path}?v=${feedbackAssetRevision}` : path;
+});
 
 const embeddedAssets = [
   'archive/330--main/index.html',
@@ -82,7 +85,7 @@ const generatedShell = `<!DOCTYPE html>
 </head>
 <body>
   <noscript>此应用需要启用 JavaScript。</noscript>
-  <script src="modules/bootstrap/html-fragment-manifest.js"></script>
+  <script src="modules/bootstrap/html-fragment-manifest.js?v=${feedbackAssetRevision}"></script>
   <script src="modules/bootstrap/document-loader.js"></script>
 </body>
 </html>

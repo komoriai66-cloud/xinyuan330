@@ -59,7 +59,7 @@
   function getCredential(id) { return ownedThreads().find(item => item.id === id); }
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char =>
-      ({ '&': '&', '<': '<', '>': '>', '"': '"', "'": '&#39;' })[char]);
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   }
   function dateText(value) {
     if (!value) return '';
