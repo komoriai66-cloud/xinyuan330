@@ -2,7 +2,7 @@
 // 【智能缓存策略】- 根据资源类型使用不同的缓存策略，优化加载速度
 
 // 缓存版本号（智能缓存策略）
-const CACHE_VERSION = 'v0.0.46-feedback-cache';
+const CACHE_VERSION = 'v0.0.47-feedback-ui';
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 const DESKTOP_FEATURE_CACHE_TO_REMOVE = 'ephone-cache-v0.0.36-pwa-install-2';
 
@@ -15,9 +15,9 @@ const CORE_URLS_TO_CACHE = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './modules/bootstrap/register-service-worker.js',
-  './modules/bootstrap/html-fragment-manifest.js?v=feedback-20260928',
+  './modules/bootstrap/html-fragment-manifest.js?v=feedback-ui-20260928',
   './modules/bootstrap/document-loader.js',
-  './generated/html-fragments/document-head.js?v=feedback-20260928',
+  './generated/html-fragments/document-head.js?v=feedback-ui-20260928',
   './generated/html-fragments/intro-and-home.js',
   './generated/html-fragments/health-and-couple.js',
   './generated/html-fragments/cphone.js',

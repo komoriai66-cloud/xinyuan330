@@ -117,6 +117,25 @@ test('public API rejects unlisted browser origins', async () => {
   } finally { env.DB.close(); }
 });
 
+test('public API accepts loopback origins on any local port', async () => {
+  const env = environment();
+  try {
+    for (const origin of ['http://localhost:5500', 'http://127.0.0.1:8080']) {
+      const response = await publicWorker.fetch(new Request('https://api.example.test/health', {
+        method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': 'GET' }
+      }), env);
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+    }
+    for (const origin of ['http://localhost.attacker.example:5500', 'file://', 'null']) {
+      const response = await publicWorker.fetch(new Request('https://api.example.test/health', {
+        headers: { Origin: origin }
+      }), env);
+      assert.equal(response.status, 403);
+    }
+  } finally { env.DB.close(); }
+});
+
 test('admin page script parses and private metadata stays out of public responses', async () => {
   const script = ADMIN_HTML.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
