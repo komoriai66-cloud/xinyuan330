@@ -404,19 +404,19 @@
         <div class="settings-section">
             <div class="settings-tip-wrapper">
                 <div class="settings-tip-content">
-                    <strong>注意：</strong>匿名反馈作者无法回复你，你也收不到回复通知。如需作者回复，请使用下方「公开反馈」。
+                    <strong>说明：</strong>两种反馈都能收到作者回复。匿名对话仅你和作者可见；公开反馈经审核后对其他用户可见。清除本设备的网站数据后，无法找回原对话。
                 </div>
             </div>
             <div class="settings-item">
                 <label>匿名许愿 / 反馈</label>
                 <div class="settings-right">
-                    <a href="javascript:void(0)" onclick="showCustomAlert('功能暂时关闭', '许愿/反馈功能暂时关闭，后续可能会重新开放，敬请期待！')" class="settings-mini-btn" style="text-decoration: none; color: inherit;">前往</a>
+                    <button type="button" onclick="EPhoneFeedback.open('private')" class="settings-mini-btn">前往</button>
                 </div>
             </div>
             <div class="settings-item">
                 <label>公开反馈（可收到回复）</label>
                 <div class="settings-right">
-                    <a href="javascript:void(0)" onclick="showCustomAlert('功能暂时关闭', '许愿/反馈功能暂时关闭，后续可能会重新开放，敬请期待！')" class="settings-mini-btn" style="text-decoration: none; color: inherit;">前往</a>
+                    <button type="button" onclick="EPhoneFeedback.open('public')" class="settings-mini-btn">前往</button>
                 </div>
             </div>
         </div>

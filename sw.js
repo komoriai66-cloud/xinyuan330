@@ -2,7 +2,7 @@
 // 【智能缓存策略】- 根据资源类型使用不同的缓存策略，优化加载速度
 
 // 缓存版本号（智能缓存策略）
-const CACHE_VERSION = 'v0.0.40-ios-font-safe-area';
+const CACHE_VERSION = 'v0.0.45-feedback';
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 const DESKTOP_FEATURE_CACHE_TO_REMOVE = 'ephone-cache-v0.0.36-pwa-install-2';
 
@@ -92,7 +92,8 @@ self.addEventListener('fetch', event => {
   const url = event.request.url;
 
   // 排除 API 请求，让它们不受 Service Worker 干扰
-  const isApiRequest = url.includes('generativelanguage.googleapis.com') || 
+  const isApiRequest = event.request.headers.get('X-EPhone-Feedback') === '1' ||
+                       url.includes('generativelanguage.googleapis.com') ||
                        url.includes('/v1/models') || 
                        url.includes('/v1/chat/completions') ||
                        url.includes('gemini.beijixingxing.com') ||

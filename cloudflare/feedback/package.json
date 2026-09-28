@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check public-worker.js && node --check admin-worker.js && node --check admin-page.js && node --test test/feedback.test.js",
+    "dev:public": "wrangler dev --config wrangler-public.jsonc",
+    "dev:admin": "wrangler dev --config wrangler-admin.jsonc --port 8788",
+    "deploy:public": "wrangler deploy --config wrangler-public.jsonc",
+    "deploy:admin": "wrangler deploy --config wrangler-admin.jsonc"
+  },
+  "devDependencies": {
+    "wrangler": "^4.36.0"
+  }
+}
