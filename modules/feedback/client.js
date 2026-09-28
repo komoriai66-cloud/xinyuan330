@@ -225,8 +225,8 @@
             ${message.attachment_key ? `<button type="button" data-action="image" data-key="${message.attachment_key}" data-id="${id}">查看截图</button>` : ''}</article>`).join('')}</div>
         ${canReply ? `<form class="feedback-reply-form"><label>继续回复<textarea name="body" maxlength="5000" rows="3" required placeholder="继续说…"></textarea></label>
           <label>截图（可选，1 MB 以内）<input name="image" type="file" accept="image/png,image/jpeg,image/webp"></label>
-          <div class="feedback-challenge"></div><button type="submit" class="feedback-primary">发送</button></form>
-          <button type="button" class="feedback-danger" data-action="delete" data-id="${id}">删除这段对话及已提交内容</button>` : ''}`;
+          <div class="feedback-challenge"></div><button type="submit" class="feedback-primary">发送</button></form>` : ''}
+        ${credential ? `<button type="button" class="feedback-danger" data-action="delete" data-id="${id}">删除这段对话及已提交内容</button>` : ''}`;
       root.querySelector('.feedback-main').scrollTop = scrollTop;
       if (credential) {
         const items = ownedThreads();
