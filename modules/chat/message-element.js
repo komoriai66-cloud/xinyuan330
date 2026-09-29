@@ -7,7 +7,10 @@
       msg.type !== 'kinship_request' && msg.type !== 'synth_music' && msg.type !== 'naiimag' && msg.type !== 'realimag' && msg.type !== 'googleimag' && msg.type !== 'openaiimag' &&
       msg.type !== 'ai_image' && msg.type !== 'user_photo' && msg.type !== 'couple_invite' && msg.type !== 'couple_invite_response' &&
       msg.type !== 'thought_chain_block' && msg.type !== 'mcp_activity') {
-      const contentStr = String(msg.content || '').trim().toLowerCase();
+      const displayContent = msg.type === 'offline_text'
+        ? (msg.content || `${msg.dialogue || ''} ${msg.description || ''}`)
+        : msg.content;
+      const contentStr = String(displayContent || '').trim().toLowerCase();
       if (contentStr === '' || contentStr === 'undefined') {
         console.log('[QQ Undefined过滤] 已过滤空消息或undefined消息:', msg);
         return null;
@@ -186,11 +189,16 @@
 
       if (msg.type === 'offline_text') {
 
-        const combinedText = msg.content || `${msg.dialogue || ''} ${msg.description || ''}`.trim();
+        const originalText = msg.content || `${msg.dialogue || ''} ${msg.description || ''}`.trim();
+        const renderedOfflineText = await applyRenderingRulesDetailed(originalText, chat.id);
+        const combinedText = renderedOfflineText.content;
 
         const useContinuousLayout = chat && chat.settings && chat.settings.offlineContinuousLayout;
 
-        if (useContinuousLayout) {
+        if (renderedOfflineText.isHtml && combinedText !== originalText) {
+          contentHtml = combinedText;
+          bubble.classList.add('is-card-like');
+        } else if (useContinuousLayout) {
           // 连续排版模式：整体渲染，对话部分只加样式不拆段
           const dialogueRegex = /(「.*?」|".*?")/gs;
           let lastIndex = 0;
@@ -814,8 +822,9 @@
       return wrapper;
     } else {
       const processedContent = String(rawContent);
-      let processedByRule = await applyRenderingRules(processedContent, chat.id);
-      if (processedByRule !== processedContent) {
+      const renderedText = await applyRenderingRulesDetailed(processedContent, chat.id);
+      const processedByRule = renderedText.content;
+      if (renderedText.isHtml && processedByRule !== processedContent) {
         contentHtml = processedByRule;
         bubble.classList.add('is-card-like');
       } else {

@@ -2,7 +2,7 @@
 class UpdateNotification {
   constructor() {
     this.storageKey = 'update_notification_dismissed';
-    this.currentVersion = '9.23'; // 当前更新版本号
+    this.currentVersion = '9.27'; // 当前更新版本号
     this.countdownSeconds = 5;
     this.countdownInterval = null;
   }
@@ -23,15 +23,15 @@ class UpdateNotification {
       <div class="update-item important-note">注意：首次打开最好使用魔法</div>
       <div class="update-item tips">有任何问题请通过DC私信联系 <a href="https://discord.com/users/1353222930875551804" target="_blank" style="color: #4A9EFF;">点击前往</a>，其他渠道可能无法及时回复</div>
       <div class="update-item important-note">使用提示：请留意 API 设置页面的小人菜单，新增功能入口都在这里哦。</div>
-      <div class="update-divider">9.23 本次更新</div>
-      <div class="update-item">1. 新增自由布局，支持自定义小组件。</div>
-      <div class="update-item">2. 补充教程 App 的内容。</div>
-      <div class="update-item">3. 修复返回按钮位置偏下、从聊天设置返回后页面渲染异常的问题。</div>
-      <div class="update-item important-note">4. 修复图标被覆盖的问题。更新后需重新设置一次，后续不会再被覆盖。</div>
-      <div class="update-item">5. 修复线下预设重复发送、API 保存失败的问题。</div>
-      <div class="update-item">6. 修复朋友圈在夜间模式下变白的问题。</div>
-      <div class="update-item">7. 修复 MCP 及类似 App 在 iOS 上的安全区适配问题。</div>
-      <div class="update-item">8. 修复联机相关问题。</div>
+      <div class="update-divider">9.27 小更新</div>
+      <div class="update-item">1. 修复开启 API 美化后，进入聊天可能出现白屏的问题。</div>
+      <div class="update-item">2. 修复向量记忆的自动提取间隔最多只能设置为 100 条的问题，现在可设置为 5～9999 条。</div>
+      <div class="update-item">3. 角色发送的语音消息现在可以下载为 MP3。</div>
+      <div class="update-item">4. 优化消息转发：发送前可再次确认接收对象和消息范围，也可以隐藏不想误选的转发对象。</div>
+      <div class="update-item">5. 修复渲染器正则规则在部分聊天内容中显示异常的问题，并改善线下消息的规则渲染。</div>
+      <div class="update-divider">共同更新 · 反馈中心试用</div>
+      <div class="update-item">新增私密反馈和公开反馈入口，可提交建议、报错并附带截图；公开内容经审核后展示。作者回复后，可回到原浏览器查看并继续交流。</div>
+      <div class="update-item tips">反馈投稿需要联网完成安全验证。中国大陆网络下，验证可能无法加载，投稿暂不保证稳定可用；遇到问题可稍后重试，或继续使用原有反馈渠道。</div>
     `;
 
     return `
@@ -39,7 +39,7 @@ class UpdateNotification {
         <div id="update-notification-modal">
           <img src="https://img.baibai.cv/f/mwOEhK/retouch-2026013121094970.png" class="update-decoration-img">
           <div class="update-notification-header">
-            <div class="update-title">9.23 更新</div>
+            <div class="update-title">9.27 更新</div>
           </div>
           
           <div class="update-notification-body">

@@ -632,9 +632,9 @@
     return modifiedHistory;
   }
 
-  async function applyRenderingRules(rawContent, chatId) {
+  async function applyRenderingRulesDetailed(rawContent, chatId) {
     if (!rawContent || typeof rawContent !== 'string') {
-      return rawContent;
+      return { content: rawContent, isHtml: false };
     }
 
     if (!ruleCache.activeRules) {
@@ -666,14 +666,15 @@
             return {
               ...rule,
               _compiledRegex: compiledRegex,
-              _replacementString: rule.template ?? rule.replaceString
+              _replacementString: rule.template ?? rule.replaceString,
+              _isHtmlTemplate: /<\/?[a-z][^>]*>/i.test(rule.template ?? rule.replaceString ?? '')
             };
           });
           cacheToPopulate.applicableRulesByChat = new Map();
         });
       }
       await cacheToPopulate.activeRulesPromise;
-      if (ruleCache !== cacheToPopulate) return applyRenderingRules(rawContent, chatId);
+      if (ruleCache !== cacheToPopulate) return applyRenderingRulesDetailed(rawContent, chatId);
     }
 
     const canCacheResult = rawContent.length <= 50000;
@@ -694,21 +695,30 @@
     }
 
     let processedContent = rawContent;
+    let isHtml = false;
 
     for (const rule of applicableRules) {
       try {
         const regex = rule._compiledRegex;
         if (!regex) continue;
         regex.lastIndex = 0;
-        processedContent = processedContent.replace(regex, rule._replacementString);
+        const replacedContent = processedContent.replace(regex, rule._replacementString);
+        if (replacedContent !== processedContent && rule._isHtmlTemplate) isHtml = true;
+        processedContent = replacedContent;
 
       } catch (e) {
         console.error(`渲染规则 [${rule.name}] 执行出错:`, e);
       }
     }
 
-    if (cacheKey) rememberRenderingResult(cacheKey, processedContent);
-    return processedContent;
+    const result = { content: processedContent, isHtml };
+    if (cacheKey) rememberRenderingResult(cacheKey, result);
+    return result;
+  }
+
+  async function applyRenderingRules(rawContent, chatId) {
+    const result = await applyRenderingRulesDetailed(rawContent, chatId);
+    return result.content;
   }
 
   // ========== 全局暴露 ==========
@@ -728,6 +738,7 @@
   window.deleteRenderingRule = deleteRenderingRule;
   window.filterHistoryWithDoNotSendRules = filterHistoryWithDoNotSendRules;
   window.applyRenderingRules = applyRenderingRules;
+  window.applyRenderingRulesDetailed = applyRenderingRulesDetailed;
   window.invalidateRenderingRuleCache = resetRenderingRuleCache;
   window.switchRuleCategory = switchRuleCategory;
   window.ruleCache = ruleCache;

@@ -1,5 +1,5 @@
 window.__EPHONE_HTML_FRAGMENT_SCRIPTS = [
-  "generated/html-fragments/document-head.js?v=ios-layout-rollback-20260929",
+  "generated/html-fragments/document-head.js?v=release-20260929",
   "generated/html-fragments/intro-and-home.js",
   "generated/html-fragments/health-and-couple.js",
   "generated/html-fragments/cphone.js",
