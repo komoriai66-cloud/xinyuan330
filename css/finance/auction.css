@@ -199,9 +199,9 @@
                /* 霓虹光晕 */
            }
 
-           /* 1. 头部：保留原有留白，并避开系统顶部安全区 */
+           /* 1. 头部：恢复旧版固定留白 */
            .alipay-header-area {
-               padding-top: max(25px, calc(10px + var(--screen-top-inset, 0px))) !important;
+               padding-top: 25px !important;
 
                /* 保持下方留白给卡片上浮 */
                padding-bottom: 50px !important;

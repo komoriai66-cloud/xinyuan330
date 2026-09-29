@@ -9,6 +9,7 @@ const fragmentManifestPath = path.join(projectRoot, 'html-fragments.json');
 const scriptManifestPath = path.join(projectRoot, 'modules', 'bootstrap', 'html-fragment-manifest.js');
 const generatedFragmentDirectory = path.join(projectRoot, 'generated', 'html-fragments');
 const feedbackAssetRevision = 'feedback-20260929';
+const layoutAssetRevision = 'ios-layout-rollback-20260929';
 
 const fragments = [
   'document-head.html',
@@ -45,8 +46,9 @@ const fragmentScripts = fragments.map(fragment => ({
 
 const fragmentScriptPaths = fragmentScripts.map(fragment => {
   const path = `generated/html-fragments/${fragment.outputName}`;
-  return ['document-head.js', 'api-settings-data.js'].includes(fragment.outputName)
-    ? `${path}?v=${feedbackAssetRevision}` : path;
+  if (fragment.outputName === 'document-head.js') return `${path}?v=${layoutAssetRevision}`;
+  if (fragment.outputName === 'api-settings-data.js') return `${path}?v=${feedbackAssetRevision}`;
+  return path;
 });
 
 const embeddedAssets = [
@@ -85,7 +87,7 @@ const generatedShell = `<!DOCTYPE html>
 </head>
 <body>
   <noscript>此应用需要启用 JavaScript。</noscript>
-  <script src="modules/bootstrap/html-fragment-manifest.js?v=${feedbackAssetRevision}"></script>
+  <script src="modules/bootstrap/html-fragment-manifest.js?v=${layoutAssetRevision}"></script>
   <script src="modules/bootstrap/document-loader.js"></script>
 </body>
 </html>

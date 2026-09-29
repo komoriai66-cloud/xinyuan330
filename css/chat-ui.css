@@ -123,11 +123,6 @@
                justify-content: center;
                align-items: center;
                z-index: 100;
-               box-sizing: border-box;
-               padding-top: var(--safe-top, 0px);
-               padding-right: var(--safe-right, 0px);
-               padding-bottom: max(var(--safe-bottom, 0px), var(--keyboard-inset, 0px));
-               padding-left: var(--safe-left, 0px);
            }
 
            .modal.visible {
@@ -601,11 +596,6 @@
                z-index: 10200;
                opacity: 0;
                transition: opacity 0.2s ease-in-out;
-               box-sizing: border-box;
-               padding-top: var(--safe-top, 0px);
-               padding-right: var(--safe-right, 0px);
-               padding-bottom: max(var(--safe-bottom, 0px), var(--keyboard-inset, 0px));
-               padding-left: var(--safe-left, 0px);
            }
 
            #custom-modal-overlay.visible {
@@ -622,9 +612,6 @@
                flex-direction: column;
                transform: scale(0.95);
                transition: transform 0.2s ease-in-out;
-               max-width: calc(100% - 24px);
-               max-height: calc(var(--app-viewport-height, 100vh) - var(--safe-top, 0px) - var(--safe-bottom, 0px) - 24px);
-               min-width: 0;
            }
 
            #custom-modal-overlay.visible #custom-modal {
