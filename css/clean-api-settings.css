@@ -109,6 +109,33 @@
    API 设置：精致 iOS 胶囊小按钮美化
    ========================================================================== */
 
+#api-settings-screen .feedback-entry-row > label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#api-settings-screen .feedback-entry-row .settings-right { flex: 0 0 auto; }
+#api-settings-screen .feedback-entry-btn.has-feedback-notice {
+  max-width: 82px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-inline: 4px !important;
+  font-size: 11px !important;
+}
+#api-settings-screen .feedback-entry-btn.has-feedback-notice svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  margin-right: 2px;
+}
+#api-settings-screen .feedback-entry-btn.has-feedback-notice span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #api-settings-screen .settings-mini-btn,
 #api-settings-screen #open-console-btn {
   display: inline-flex !important;

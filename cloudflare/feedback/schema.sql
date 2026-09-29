@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS threads (
   nickname TEXT NOT NULL DEFAULT '',
   secret_hash TEXT NOT NULL,
   status TEXT NOT NULL CHECK(status IN ('open', 'pending', 'visible', 'hidden', 'closed')),
+  visitor_closed INTEGER NOT NULL DEFAULT 0 CHECK(visitor_closed IN (0, 1)),
   note TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,

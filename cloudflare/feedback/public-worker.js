@@ -12,7 +12,7 @@ function corsHeaders(origin, env) {
   } catch (_) { /* Invalid or opaque origins are denied. */ }
   return origin && (allowed.includes(origin) || localOrigin) ? {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-EPhone-Feedback',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin'
@@ -52,7 +52,7 @@ async function route(request, env) {
     const valid = entries.filter(item => uuidPattern.test(item?.id || '') && tokenPattern.test(item?.token || ''));
     if (!valid.length) return json({ threads: [] });
     const placeholders = valid.map(() => '?').join(',');
-    const rows = await env.DB.prepare(`SELECT id, kind, title, status, updated_at, last_admin_at, secret_hash
+    const rows = await env.DB.prepare(`SELECT id, kind, title, status, visitor_closed, updated_at, last_admin_at, secret_hash
       FROM threads WHERE id IN (${placeholders})`).bind(...valid.map(item => item.id)).all();
     const result = [];
     for (const row of rows.results || []) {
@@ -129,7 +129,7 @@ async function route(request, env) {
     const thread = await threadById(env, messageRoute[1]);
     if (!thread) return fail('对话不存在。', 404);
     if (!(await owns(request, thread))) return fail('无权回复此对话。', 403);
-    if (thread.status === 'closed' || thread.status === 'hidden') return fail('此对话已关闭。', 409);
+    if (thread.status === 'closed' || thread.status === 'hidden' || thread.visitor_closed) return fail('此对话已关闭。', 409);
     if (!(await rateLimit(request, env, 'message'))) return fail('发送过于频繁，请稍后再试。', 429);
     if (Number(request.headers.get('Content-Length')) > 1300000) return fail('内容过大。', 413);
     const form = await parseFormRequest(request);
@@ -151,6 +151,15 @@ async function route(request, env) {
     );
     await env.DB.batch(statements);
     return json({ ok: true }, 201);
+  }
+
+  if (threadRoute && request.method === 'PATCH') {
+    const thread = await threadById(env, threadRoute[1]);
+    if (!thread) return fail('对话不存在。', 404);
+    if (!(await owns(request, thread))) return fail('无权关闭此对话。', 403);
+    await env.DB.prepare('UPDATE threads SET visitor_closed = 1, updated_at = ? WHERE id = ?')
+      .bind(Date.now(), thread.id).run();
+    return json({ ok: true });
   }
 
   if (threadRoute && request.method === 'DELETE') {

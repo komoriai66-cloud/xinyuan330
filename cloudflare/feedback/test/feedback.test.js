@@ -35,6 +35,15 @@ function environment() {
     ADMIN_TOKEN_HASH: createHash('sha256').update('34'.repeat(32)).digest('hex')
   };
 }
+test('existing feedback databases can add the conversation closure field', () => {
+  const sqlite = new DatabaseSync(':memory:');
+  try {
+    sqlite.exec('CREATE TABLE threads (id TEXT PRIMARY KEY)');
+    sqlite.exec(fs.readFileSync(new URL('../migrations/2026-09-29-visitor-close.sql', import.meta.url), 'utf8'));
+    sqlite.prepare('INSERT INTO threads (id) VALUES (?)').run('existing');
+    assert.equal(sqlite.prepare('SELECT visitor_closed FROM threads WHERE id = ?').get('existing').visitor_closed, 0);
+  } finally { sqlite.close(); }
+});
 function body(kind, id, token, image) {
   const form = new FormData();
   Object.entries({ kind, id, token, category: 'wish', title: '一条心愿', body: '希望能收到回复', turnstileToken: 'test-token' })
@@ -103,6 +112,45 @@ test('public feedback stays hidden until moderation, then becomes readable witho
     assert.equal((await (await publicCall(env, '/public/threads')).json()).threads[0].id, id);
     assert.equal((await adminCall(env, `/api/threads/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'hidden' }) })).status, 200);
     assert.equal((await publicCall(env, `/threads/${id}`)).status, 403);
+  } finally { env.DB.close(); globalThis.fetch = originalFetch; }
+});
+
+test('owners can close private and public conversations without changing public visibility', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: true, hostname: 'example.test' }), { status: 200 });
+  const env = environment();
+  try {
+    for (const kind of ['private', 'public']) {
+      const id = crypto.randomUUID();
+      const token = kind === 'private' ? 'aa'.repeat(32) : 'bb'.repeat(32);
+      assert.equal((await publicCall(env, '/threads', { method: 'POST', body: body(kind, id, token) })).status, 201);
+      if (kind === 'public') {
+        assert.equal((await adminCall(env, `/api/threads/${id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'visible' })
+        })).status, 200);
+      }
+      assert.equal((await publicCall(env, `/threads/${id}`, { method: 'PATCH' })).status, 403);
+      assert.equal((await publicCall(env, `/threads/${id}`, { method: 'PATCH' }, token)).status, 200);
+      const own = await (await publicCall(env, `/threads/${id}`, {}, token)).json();
+      assert.equal(own.thread.visitor_closed, 1);
+      assert.equal(own.messages.length, 1);
+      const inbox = await (await publicCall(env, '/inbox', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ threads: [{ id, token }] })
+      })).json();
+      assert.equal(inbox.threads[0].visitor_closed, 1);
+      const reply = new FormData();
+      reply.set('messageId', crypto.randomUUID());
+      reply.set('body', '再次补充');
+      assert.equal((await publicCall(env, `/threads/${id}/messages`, { method: 'POST', body: reply }, token)).status, 409);
+      assert.equal((await adminCall(env, `/api/threads/${id}/reply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: '作者继续回复' })
+      })).status, 409);
+      if (kind === 'public') {
+        assert.equal((await (await publicCall(env, '/public/threads')).json()).threads[0].id, id);
+        assert.equal((await publicCall(env, `/threads/${id}`)).status, 200);
+      }
+      assert.equal((await publicCall(env, `/threads/${id}`, { method: 'DELETE' }, token)).status, 200);
+    }
   } finally { env.DB.close(); globalThis.fetch = originalFetch; }
 });
 

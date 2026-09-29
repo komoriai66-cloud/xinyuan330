@@ -16,6 +16,8 @@
   let refreshTimer;
   let noticeCountdownTimer;
   let viewSequence = 0;
+  let lastIndicatorCheck = 0;
+  let confirmResolve;
 
   // 精致的守护甜心与古典信箱矢量线框图标 (无渐变、纯黑白、无默认 Emoji)
   const ICONS = {
@@ -130,6 +132,12 @@
     if (!root) return;
     const backdrop = root.querySelector('.mailbox-notice-backdrop');
     if (!backdrop) return;
+    const privacyTitle = backdrop.querySelector('.mailbox-notice-privacy-title');
+    const privacyText = backdrop.querySelector('.mailbox-notice-privacy-text');
+    if (privacyTitle) privacyTitle.textContent = state.mode === 'private' ? '私密信件' : '公开信件';
+    if (privacyText) privacyText.textContent = state.mode === 'private'
+      ? '此信仅你与作者可见。'
+      : '审核通过后，信件与往来内容可供其他用户查看。';
 
     clearNoticeCountdown();
     const ackBtn = backdrop.querySelector('[data-action="notice-ack"]');
@@ -238,9 +246,9 @@
               <div class="mailbox-notice-item">
                 <div class="notice-item-head">
                   <span class="notice-item-icon">◈</span>
-                  <strong class="notice-item-title">私密信件</strong>
+                  <strong class="notice-item-title mailbox-notice-privacy-title">私密信件</strong>
                 </div>
-                <p class="notice-item-desc">此信仅你与作者可见。</p>
+                <p class="notice-item-desc mailbox-notice-privacy-text">此信仅你与作者可见。</p>
               </div>
             </div>
 
@@ -253,10 +261,33 @@
             </footer>
           </div>
         </div>
+        <div class="mailbox-confirm-backdrop" hidden>
+          <div class="mailbox-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="mailboxConfirmTitle">
+            <h3 id="mailboxConfirmTitle">请确认操作</h3>
+            <p class="mailbox-confirm-message"></p>
+            <div class="mailbox-confirm-actions">
+              <button type="button" data-action="confirm-cancel">取消</button>
+              <button type="button" data-action="confirm-accept">确认</button>
+            </div>
+          </div>
+        </div>
       </div>`;
     document.body.appendChild(root);
 
     root.addEventListener('click', handleClick);
+    root.addEventListener('keydown', event => {
+      const dialog = root.querySelector('.mailbox-confirm-backdrop');
+      if (dialog?.hidden) return;
+      if (event.key === 'Escape') { event.preventDefault(); settleConfirm(false); }
+      if (event.key === 'Tab') {
+        const buttons = [...dialog.querySelectorAll('button')];
+        const next = event.shiftKey ? buttons[0] : buttons[1];
+        if (document.activeElement === next) {
+          event.preventDefault();
+          (event.shiftKey ? buttons[1] : buttons[0]).focus();
+        }
+      }
+    });
     root.addEventListener('submit', handleSubmit);
     root.addEventListener('input', event => {
       if (!event.target.closest('.mailbox-form')) return;
@@ -397,26 +428,67 @@
     if (!isPrivate) loadPublic(true);
   }
 
+  function paintEntryIndicators(threads, owned) {
+    const byId = new Map(threads.map(thread => [thread.id, thread]));
+    for (const mode of ['private', 'public']) {
+      const button = document.querySelector(`[data-feedback-entry="${mode}"]`);
+      if (!button) continue;
+      const mine = owned.filter(item => item.kind === mode).map(item => ({ local: item, remote: byId.get(item.id) })).filter(item => item.remote);
+      const replied = mine.some(({ local, remote }) => remote.last_admin_at > (local.seenAt || 0));
+      const published = mode === 'public' && mine.some(({ remote }) => remote.status === 'visible');
+      const label = replied && published ? '回信·公开' : replied ? '有回信' : published ? '已公开' : '前往';
+      button.innerHTML = replied || published ? `${ICONS.letter}<span>${label}</span>` : label;
+      button.classList.toggle('has-feedback-notice', replied || published);
+      button.setAttribute('aria-label', mode === 'private'
+        ? (replied ? '匿名许愿有新回信，前往查看' : '前往匿名许愿')
+        : (replied && published ? '公开反馈有新回信，信件已公开，前往查看' : replied ? '公开反馈有新回信，前往查看' : published ? '信件已公开，前往查看' : '前往公开反馈'));
+    }
+  }
+  function confirmAction(message) {
+    const backdrop = root.querySelector('.mailbox-confirm-backdrop');
+    backdrop.querySelector('.mailbox-confirm-message').textContent = message;
+    backdrop.hidden = false;
+    backdrop.querySelector('[data-action="confirm-cancel"]').focus();
+    return new Promise(resolve => { confirmResolve = resolve; });
+  }
+  function settleConfirm(approved) {
+    const backdrop = root?.querySelector('.mailbox-confirm-backdrop');
+    if (backdrop) backdrop.hidden = true;
+    if (confirmResolve) { confirmResolve(approved); confirmResolve = null; }
+  }
+
+  async function fetchOwnedStatuses() {
+    const owned = ownedThreads();
+    if (!apiUrl || !owned.length) { paintEntryIndicators([], owned); return []; }
+    const threads = [];
+    for (let start = 0; start < owned.length; start += 30) {
+      const data = await request('/inbox', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threads: owned.slice(start, start + 30).map(({ id, token }) => ({ id, token })) })
+      });
+      threads.push(...data.threads);
+    }
+    paintEntryIndicators(threads, owned);
+    return threads;
+  }
+
   async function refreshOwned() {
-    if (!apiUrl || !state.owned.length) return;
     try {
-      for (let start = 0; start < state.owned.length; start += 30) {
-        const data = await request('/inbox', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ threads: state.owned.slice(start, start + 30).map(({ id, token }) => ({ id, token })) })
-        });
-        for (const thread of data.threads) {
-          const local = state.owned.find(item => item.id === thread.id);
-          if (!local) continue;
-          const tag = root.querySelector(`[data-bind-status="${thread.id}"]`);
-          if (tag) {
-            const hasNew = thread.last_admin_at > (local.seenAt || 0);
-            tag.classList.toggle('has-reply', hasNew);
-            tag.textContent = hasNew ? '✦ 掌柜已回信' :
-              (thread.status === 'pending' ? '静候启封' :
-               thread.status === 'visible' ? '已入展录' :
-               thread.status === 'closed' ? '信札已结' : '封缄留档');
-          }
+      const threads = await fetchOwnedStatuses();
+      for (const thread of threads) {
+        const local = state.owned.find(item => item.id === thread.id);
+        if (!local) continue;
+        const tag = root.querySelector(`[data-bind-status="${thread.id}"]`);
+        if (tag) {
+          const hasNew = thread.last_admin_at > (local.seenAt || 0);
+          tag.classList.toggle('has-reply', hasNew);
+          const letter = hasNew || thread.status === 'visible';
+          const label = hasNew && thread.status === 'visible' ? '新回信 · 已公开' :
+            hasNew ? '有新回信' :
+            thread.status === 'visible' ? '信件已公开' :
+            thread.visitor_closed || thread.status === 'closed' ? '对话已关闭' :
+            thread.status === 'pending' ? '静候启封' : '封缄留档';
+          tag.innerHTML = letter ? `${ICONS.letter}<span>${label}</span>` : label;
         }
       }
     } catch (error) { status(error.message, true); }
@@ -562,7 +634,7 @@
     renderChallenge();
 
     // 每次进入写信页面检查是否触发弹窗
-    const suppressedVer = localStorage.getItem(NOTICE_SUPPRESS_KEY);
+    const suppressedVer = localStorage.getItem(state.mode === 'private' ? NOTICE_SUPPRESS_KEY : `${NOTICE_SUPPRESS_KEY}_public`);
     if (suppressedVer !== NOTICE_VERSION) {
       showNoticeModal();
     }
@@ -582,7 +654,7 @@
       state.page = 'thread';
       heading();
 
-      const canReply = !!credential && data.thread.status !== 'closed' && data.thread.status !== 'hidden';
+      const canReply = !!credential && !data.thread.visitor_closed && data.thread.status !== 'closed' && data.thread.status !== 'hidden';
 
       root.querySelector('.mailbox-viewport').innerHTML = `
         <div class="mailbox-thread-view">
@@ -654,14 +726,21 @@
                 </button>
               </form>
             </section>
+          ` : data.thread.visitor_closed || data.thread.status === 'closed' ? `
+            <p class="mailbox-thread-closed">对话已关闭，往来记录仍可查看。</p>
           ` : ''}
 
           <!-- 信札销毁归档选项 -->
           ${credential ? `
             <div class="mailbox-danger-zone">
+              ${!data.thread.visitor_closed && data.thread.status !== 'closed' ? `
+                <button type="button" class="mailbox-burn-btn" data-action="close-thread" data-id="${id}">
+                  <span>关闭对话</span>
+                </button>
+              ` : ''}
               <button type="button" class="mailbox-burn-btn" data-action="delete" data-id="${id}">
                 <span class="burn-icon">${ICONS.burn}</span>
-                <span>焚毁本段往来信札记录</span>
+                <span>删除对话</span>
               </button>
             </div>
           ` : ''}
@@ -677,6 +756,7 @@
           saveOwned(items);
           state.owned = items;
         }
+        fetchOwnedStatuses().catch(() => {});
       }
       status('');
       if (canReply) renderChallenge();
@@ -708,6 +788,8 @@
     const button = event.target.closest('[data-action]');
     if (!button || !root.contains(button)) return;
     const { action, id, key } = button.dataset;
+    if (action === 'confirm-cancel') return settleConfirm(false);
+    if (action === 'confirm-accept') return settleConfirm(true);
     if (action === 'close') return close();
     if (action === 'back') { status(''); if (state.page === 'list') close(); else renderList(); return; }
     if (action === 'new') return renderNew();
@@ -726,12 +808,24 @@
     }
     if (action === 'notice-suppress') {
       // 记录已抑制的版本，下次不再弹，除非版本升级
-      localStorage.setItem(NOTICE_SUPPRESS_KEY, NOTICE_VERSION);
+      localStorage.setItem(state.mode === 'private' ? NOTICE_SUPPRESS_KEY : `${NOTICE_SUPPRESS_KEY}_public`, NOTICE_VERSION);
       closeNoticeModal();
       return;
     }
+    if (action === 'close-thread') {
+      if (!await confirmAction(state.thread?.kind === 'public'
+        ? '关闭后无法继续回信，已有记录会保留，已公开的信件仍会展示。'
+        : '关闭后无法继续回信，已有记录会保留。')) return;
+      try {
+        await request(`/threads/${id}`, { method: 'PATCH' }, getCredential(id)?.token);
+        await openThread(id, false);
+        status('对话已关闭。');
+      } catch (error) { status(error.message, true); }
+    }
     if (action === 'delete') {
-      if (!window.confirm('确认将此段往来信札自心之信箱中彻底焚毁吗？此举无法挽回。')) return;
+      if (!await confirmAction(state.thread?.kind === 'public'
+        ? '确认永久删除此对话吗？已公开的信件也会从公开列表移除，此举无法挽回。'
+        : '确认永久删除此对话及附件吗？此举无法挽回。')) return;
       try {
         await request(`/threads/${id}`, { method: 'DELETE' }, getCredential(id)?.token);
         const items = ownedThreads().filter(item => item.id !== id);
@@ -818,6 +912,7 @@
   }
 
   function close() {
+    settleConfirm(false);
     viewSequence++;
     clearRefresh();
     clearChallenge();
@@ -830,4 +925,15 @@
   }
 
   window.EPhoneFeedback = { open, close };
+  async function refreshEntryIndicators(force = false) {
+    const settings = document.getElementById('api-settings-screen');
+    if (!settings?.classList.contains('active') || document.hidden || root?.classList.contains('open')) return;
+    if (!force && Date.now() - lastIndicatorCheck < 15000) return;
+    lastIndicatorCheck = Date.now();
+    try { await fetchOwnedStatuses(); } catch (_) { /* 保留上一次已知状态 */ }
+  }
+  document.addEventListener('click', () => setTimeout(refreshEntryIndicators, 0), true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshEntryIndicators(true); });
+  window.addEventListener('pageshow', () => refreshEntryIndicators(true));
+  setInterval(() => refreshEntryIndicators(true), 60000);
 })();

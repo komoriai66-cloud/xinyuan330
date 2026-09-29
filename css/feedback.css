@@ -390,11 +390,20 @@ body.feedback-open {
 }
 
 #ephone-feedback .mailbox-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 10px;
   padding: 1px 6px;
   border: 1px solid currentColor;
   letter-spacing: 0.05em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+#ephone-feedback .mailbox-status-tag svg { width: 12px; height: 12px; flex: 0 0 auto; }
+#ephone-feedback .mailbox-status-tag span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 #ephone-feedback .mailbox-status-tag.has-reply {
   background: #111111;
@@ -972,7 +981,15 @@ body.feedback-open {
 #ephone-feedback .mailbox-danger-zone {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 12px;
+}
+#ephone-feedback .mailbox-thread-closed {
+  margin: 12px 0 0;
+  text-align: center;
+  color: #555555;
+  font-size: 11px;
 }
 
 #ephone-feedback .mailbox-burn-btn {
@@ -988,6 +1005,52 @@ body.feedback-open {
 }
 
 #ephone-feedback .mailbox-burn-btn:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+#ephone-feedback .mailbox-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+#ephone-feedback .mailbox-confirm-backdrop[hidden] { display: none; }
+#ephone-feedback .mailbox-confirm-modal {
+  width: min(100%, 340px);
+  padding: 20px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111;
+  box-shadow: 6px 6px 0 #111111;
+}
+#ephone-feedback .mailbox-confirm-modal h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+#ephone-feedback .mailbox-confirm-message {
+  margin: 0 0 18px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+#ephone-feedback .mailbox-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+#ephone-feedback .mailbox-confirm-actions button {
+  padding: 6px 14px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111;
+  font-size: 11px;
+}
+#ephone-feedback .mailbox-confirm-actions [data-action="confirm-accept"] {
   background: #111111;
   color: #ffffff;
 }

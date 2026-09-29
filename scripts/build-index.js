@@ -8,7 +8,7 @@ const assetManifestPath = path.join(projectRoot, 'asset-manifest.json');
 const fragmentManifestPath = path.join(projectRoot, 'html-fragments.json');
 const scriptManifestPath = path.join(projectRoot, 'modules', 'bootstrap', 'html-fragment-manifest.js');
 const generatedFragmentDirectory = path.join(projectRoot, 'generated', 'html-fragments');
-const feedbackAssetRevision = 'main-sync-20260928';
+const feedbackAssetRevision = 'feedback-20260929';
 
 const fragments = [
   'document-head.html',

@@ -15,7 +15,7 @@ async function route(request, env) {
     const cursor = new URL(request.url).searchParams.get('before') || '';
     const match = /^(\d+):([0-9a-f-]{36})$/i.exec(cursor);
     if (cursor && !match) return fail('分页参数无效。');
-    const query = `SELECT id, kind, category, title, nickname, status, created_at, updated_at, last_admin_at, last_visitor_at
+    const query = `SELECT id, kind, category, title, nickname, status, visitor_closed, created_at, updated_at, last_admin_at, last_visitor_at
       FROM threads ${match ? 'WHERE updated_at < ? OR (updated_at = ? AND id < ?)' : ''}
       ORDER BY updated_at DESC, id DESC LIMIT 101`;
     const statement = env.DB.prepare(query);
@@ -52,9 +52,10 @@ async function route(request, env) {
   }
   const replyRoute = /^\/api\/threads\/([0-9a-f-]{36})\/reply$/i.exec(path);
   if (replyRoute && request.method === 'POST') {
-    const thread = await env.DB.prepare('SELECT id, status, updated_at FROM threads WHERE id = ?').bind(replyRoute[1]).first();
+    const thread = await env.DB.prepare('SELECT id, status, visitor_closed, updated_at FROM threads WHERE id = ?').bind(replyRoute[1]).first();
     if (!thread) return fail('对话不存在。', 404);
     if (thread.status === 'closed') return fail('请先重新打开对话。', 409);
+    if (thread.visitor_closed) return fail('投信者已关闭此对话。', 409);
     const body = plain((await request.json()).body, 5000);
     if (!body) return fail('请输入回复内容。');
     const now = Math.max(Date.now(), thread.updated_at + 1);
