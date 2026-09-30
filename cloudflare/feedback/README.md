@@ -34,6 +34,7 @@ UWU 前端位于 `xinOVO` 仓库的 `js/modules/feedback.js`、`css/modules/feed
 ## 发布检查
 
 - `npm run check`：21 个接口回归测试，覆盖消息所有权、版本冲突、图片权限、公开编辑重新审核、待办关联、通知重试、结果确认、来源更正和迁移。
+- `npm run check:bundle`：按管理服务器的部署配置实际打包，取出生成页面的脚本，在独立浏览器作用域中检查启动、模拟登录、工作台切换及退出，不使用真实密钥或线上数据库。此检查也包含在 `check` 和 `deploy:admin` 中。管理配置必须保持 `keep_names: false`，避免 `Function.toString()` 提取的脚本依赖 Worker 外层的打包辅助函数。
 - `npm run preview`：使用内存 SQLite 启动本地假数据预览（Node 24）；访问 http://127.0.0.1:8790/qa?surface=admin，surface 也可选 ephone、uwu。无需真实密钥，不读写线上数据库。预览默认使用相邻 OVO-main 目录，或通过 UWU_SOURCE_ROOT 指定。
 - 结束往来、公开展示、处理结果和待办状态相互独立。结束后双方不能新回信，但仍可修订自己的旧消息；已公开的信仍留在公开列表。
 - 在手机上分别检查 iOS Safari、iOS 主屏幕 PWA、安卓浏览器、安卓 PWA：提交匿名内容 → 管理页回复 → 回到原入口显示新回复；提交公开内容 → 审核前别人看不到 → 发布后公开可见。

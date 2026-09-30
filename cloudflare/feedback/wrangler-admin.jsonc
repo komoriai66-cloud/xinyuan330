@@ -1,6 +1,8 @@
 {
   "name": "ephone-feedback-admin",
   "main": "./admin-worker.js",
+  // The embedded browser script uses Function.toString(); keep it free of outer build helpers.
+  "keep_names": false,
   "compatibility_date": "2026-09-28",
   "workers_dev": true,
   "d1_databases": [

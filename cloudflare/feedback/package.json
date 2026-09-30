@@ -2,11 +2,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check public-worker.js && node --check admin-worker.js && node --check admin-client.js && node --check workbench.js && node --check admin-page.js && node --test test/feedback.test.js",
+    "check": "node --check public-worker.js && node --check admin-worker.js && node --check admin-client.js && node --check workbench.js && node --check admin-page.js && node --test test/feedback.test.js test/admin-bundle.test.js",
+    "check:bundle": "node --test test/admin-bundle.test.js",
     "dev:public": "wrangler dev --config wrangler-public.jsonc",
     "dev:admin": "wrangler dev --config wrangler-admin.jsonc --port 8788",
     "deploy:public": "wrangler deploy --config wrangler-public.jsonc",
-    "deploy:admin": "wrangler deploy --config wrangler-admin.jsonc",
+    "deploy:admin": "npm run check:bundle && wrangler deploy --config wrangler-admin.jsonc",
     "preview": "node test/preview.mjs"
   },
   "devDependencies": {
