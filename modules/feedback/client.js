@@ -11,6 +11,8 @@
   const siteKey = String(config.turnstileSiteKey || '');
   const state = { mode: 'private', page: 'list', thread: null, publicItems: [], publicNextCursor: null, owned: [], busy: false };
   let root;
+  let tools;
+  let publicSequence = 0;
   let turnstilePromise;
   let challengeWidgetId;
   let refreshTimer;
@@ -273,6 +275,12 @@
         </div>
       </div>`;
     document.body.appendChild(root);
+    tools = window.FeedbackTools.create({
+      root, prefix: 'mailbox', product: 'ephone', state, request, credential: getCredential,
+      owned: ownedThreads, saveOwned, renderList, openThread, loadPublic, status,
+      confirm: confirmAction, formData: formDataFrom, clearChallenge, renderChallenge,
+      resetChallenge: () => { if (challengeWidgetId !== undefined && window.turnstile) window.turnstile.reset(challengeWidgetId); }
+    });
 
     root.addEventListener('click', handleClick);
     root.addEventListener('keydown', event => {
@@ -290,13 +298,14 @@
     });
     root.addEventListener('submit', handleSubmit);
     root.addEventListener('input', event => {
-      if (!event.target.closest('.mailbox-form')) return;
+      if (!event.target.closest('.mailbox-new-form')) return;
       const form = event.target.form;
       if (!form) return;
       const draft = Object.fromEntries(new FormData(form).entries());
       delete draft.image;
       delete draft.turnstileToken;
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ mode: state.mode, ...draft }));
+      const previous = readLocal(DRAFT_KEY, {});
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...(previous.mode === state.mode ? previous : {}), mode: state.mode, ...draft }));
     });
     root.addEventListener('change', event => {
       // 附件文件选中预览提示
@@ -336,6 +345,8 @@
 
   // 1. 首页：心之信箱展厅
   function renderList() {
+    tools?.remember();
+    tools?.reset();
     viewSequence++;
     clearChallenge();
     state.page = 'list';
@@ -424,6 +435,7 @@
       </div>
     `;
 
+    tools.afterList();
     refreshOwned();
     if (!isPrivate) loadPublic(true);
   }
@@ -434,7 +446,7 @@
       const button = document.querySelector(`[data-feedback-entry="${mode}"]`);
       if (!button) continue;
       const mine = owned.filter(item => item.kind === mode).map(item => ({ local: item, remote: byId.get(item.id) })).filter(item => item.remote);
-      const replied = mine.some(({ local, remote }) => remote.last_admin_at > (local.seenAt || 0));
+      const replied = mine.some(({ local, remote }) => Math.max(remote.last_admin_at, remote.last_admin_change_at || 0) > (local.seenAt || 0));
       const published = mode === 'public' && mine.some(({ remote }) => remote.status === 'visible');
       const label = replied && published ? '回信·公开' : replied ? '有回信' : published ? '已公开' : '前往';
       button.innerHTML = replied || published ? `${ICONS.letter}<span>${label}</span>` : label;
@@ -480,13 +492,13 @@
         if (!local) continue;
         const tag = root.querySelector(`[data-bind-status="${thread.id}"]`);
         if (tag) {
-          const hasNew = thread.last_admin_at > (local.seenAt || 0);
+          const hasNew = Math.max(thread.last_admin_at, thread.last_admin_change_at || 0) > (local.seenAt || 0);
           tag.classList.toggle('has-reply', hasNew);
           const letter = hasNew || thread.status === 'visible';
           const label = hasNew && thread.status === 'visible' ? '新回信 · 已公开' :
             hasNew ? '有新回信' :
             thread.status === 'visible' ? '信件已公开' :
-            thread.visitor_closed || thread.status === 'closed' ? '对话已关闭' :
+            thread.visitor_closed || thread.author_closed || thread.status === 'closed' ? '对话已关闭' :
             thread.status === 'pending' ? '静候启封' : '封缄留档';
           tag.innerHTML = letter ? `${ICONS.letter}<span>${label}</span>` : label;
         }
@@ -495,9 +507,13 @@
   }
 
   async function loadPublic(reset) {
+    const requestId = ++publicSequence;
     try {
       const cursor = reset ? '' : state.publicNextCursor || '';
-      const data = await request(`/public/threads${cursor ? `?before=${encodeURIComponent(cursor)}` : ''}`);
+      const params = tools.publicQuery();
+      if (cursor) params.set('before', cursor);
+      const data = await request('/public/threads?' + params);
+      if (requestId !== publicSequence || state.page !== 'list') return;
       state.publicItems = reset ? data.threads : [...state.publicItems, ...data.threads];
       state.publicNextCursor = data.nextCursor;
       const host = root.querySelector('.mailbox-public-list');
@@ -631,6 +647,7 @@
       </div>
     `;
 
+    tools.afterNew(draft.mode === state.mode ? draft : {});
     renderChallenge();
 
     // 每次进入写信页面检查是否触发弹窗
@@ -646,7 +663,7 @@
     try {
       status('正在启封往来信札…');
       const credential = getCredential(id);
-      const data = await request(`/threads/${id}`, {}, publicView ? null : credential?.token);
+      const data = await request(`/threads/${id}`, {}, credential?.token);
       if (state.page === 'closed' || currentView !== viewSequence) return;
       const scrollTop = root.querySelector('.mailbox-viewport').scrollTop;
       clearChallenge();
@@ -654,7 +671,7 @@
       state.page = 'thread';
       heading();
 
-      const canReply = !!credential && !data.thread.visitor_closed && data.thread.status !== 'closed' && data.thread.status !== 'hidden';
+      const canReply = !!credential && !data.thread.visitor_closed && !data.thread.author_closed && data.thread.status !== 'closed' && data.thread.status !== 'hidden';
 
       root.querySelector('.mailbox-viewport').innerHTML = `
         <div class="mailbox-thread-view">
@@ -683,7 +700,8 @@
                         </span>
                         <time class="missive-time">${dateText(message.created_at)}</time>
                       </div>
-                      <div class="missive-body">${escapeHtml(message.body).replace(/\n/g, '<br>')}</div>
+                      <div class="missive-body">${escapeHtml(tools.messageBody(message)).replace(/\n/g, '<br>')}</div>
+                      ${tools.messageControls(message, credential)}
                       ${message.attachment_key ? `
                         <div class="missive-attachment">
                           <button type="button" class="mailbox-attachment-btn" data-action="image" data-key="${message.attachment_key}" data-id="${id}">
@@ -726,14 +744,14 @@
                 </button>
               </form>
             </section>
-          ` : data.thread.visitor_closed || data.thread.status === 'closed' ? `
+          ` : data.thread.visitor_closed || data.thread.author_closed || data.thread.status === 'closed' ? `
             <p class="mailbox-thread-closed">对话已关闭，往来记录仍可查看。</p>
           ` : ''}
 
           <!-- 信札销毁归档选项 -->
           ${credential ? `
             <div class="mailbox-danger-zone">
-              ${!data.thread.visitor_closed && data.thread.status !== 'closed' ? `
+              ${!data.thread.visitor_closed && !data.thread.author_closed && data.thread.status !== 'closed' ? `
                 <button type="button" class="mailbox-burn-btn" data-action="close-thread" data-id="${id}">
                   <span>关闭对话</span>
                 </button>
@@ -747,12 +765,14 @@
         </div>
       `;
 
+      tools.afterThread(data);
       root.querySelector('.mailbox-viewport').scrollTop = scrollTop;
       if (credential) {
         const items = ownedThreads();
         const item = items.find(row => row.id === id);
         if (item) {
-          item.seenAt = Math.max(item.seenAt || 0, data.thread.last_admin_at || 0);
+          item.seenAt = Math.max(item.seenAt || 0, data.thread.last_admin_at || 0, data.thread.last_admin_change_at || 0);
+          item.title = data.thread.title;
           saveOwned(items);
           state.owned = items;
         }
@@ -844,10 +864,12 @@
     if (state.busy) return;
     try {
       const data = formDataFrom(form);
+      tools.remember();
       state.busy = true;
       form.querySelector('[type="submit"]').disabled = true;
       status('正在投递心意…');
       if (form.classList.contains('mailbox-new-form')) {
+        tools.prepareNew(data);
         const summary = String(data.get('body') || '').trim().replace(/\s+/g, ' ');
         data.set('title', summary.length > 32 ? `${summary.slice(0, 32)}…` : summary);
         const oldDraft = readLocal(DRAFT_KEY, {});
@@ -867,6 +889,7 @@
         form.dataset.messageId ||= randomUUID();
         data.set('messageId', form.dataset.messageId);
         await request(`/threads/${id}/messages`, { method: 'POST', body: data }, getCredential(id)?.token);
+        tools.sent(id);
         await openThread(id, false);
       }
       status('投递达成。');
@@ -890,7 +913,7 @@
       return;
     }
     if (state.page === 'thread' && state.thread) {
-      if (root.querySelector('.mailbox-reply-form textarea')?.value.trim()) return;
+      if (tools.dirty()) { await tools.checkUpdates(); return; }
       const id = state.thread.id;
       await openThread(id, !getCredential(id));
     }
@@ -912,6 +935,8 @@
   }
 
   function close() {
+    tools.remember();
+    tools.reset();
     settleConfirm(false);
     viewSequence++;
     clearRefresh();

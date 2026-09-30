@@ -21,8 +21,13 @@ export async function owns(request, thread) {
   const token = bearer(request);
   return !!token && (await sha256(token)) === thread.secret_hash;
 }
-export function visibleThread(thread) {
-  const { secret_hash, note, ...safe } = thread;
+export function visibleThread(thread, privileged = true) {
+  const fields = ['id','product','kind','category','title','nickname','status','visitor_closed','author_closed',
+    'created_at','updated_at','last_admin_at','last_visitor_at','last_admin_change_at',
+    'outcome','outcome_note','outcome_at','resolved_version','visitor_result'];
+  const safe = Object.fromEntries(fields.map(key => [key, thread[key]]));
+  if (privileged) safe.environment = thread.environment || '';
+  else safe.title = thread.public_title || '反馈';
   return safe;
 }
 export function plain(value, max) {
@@ -63,7 +68,10 @@ export function parseFormRequest(request) {
   return request.formData();
 }
 export async function deleteThread(env, threadId) {
-  await env.DB.prepare('DELETE FROM attachments WHERE thread_id = ?').bind(threadId).run();
-  await env.DB.prepare('DELETE FROM messages WHERE thread_id = ?').bind(threadId).run();
-  await env.DB.prepare('DELETE FROM threads WHERE id = ?').bind(threadId).run();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM task_threads WHERE thread_id = ?').bind(threadId),
+    env.DB.prepare('DELETE FROM attachments WHERE thread_id = ?').bind(threadId),
+    env.DB.prepare('DELETE FROM messages WHERE thread_id = ?').bind(threadId),
+    env.DB.prepare('DELETE FROM threads WHERE id = ?').bind(threadId)
+  ]);
 }

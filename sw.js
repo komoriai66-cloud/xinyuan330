@@ -2,7 +2,7 @@
 // 【智能缓存策略】- 根据资源类型使用不同的缓存策略，优化加载速度
 
 // 缓存版本号（智能缓存策略）
-const CACHE_VERSION = 'v0.0.53-release-20260929';
+const CACHE_VERSION = 'v0.0.55-feedback-workbench';
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 const DESKTOP_FEATURE_CACHE_TO_REMOVE = 'ephone-cache-v0.0.36-pwa-install-2';
 
@@ -15,9 +15,9 @@ const CORE_URLS_TO_CACHE = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './modules/bootstrap/register-service-worker.js',
-  './modules/bootstrap/html-fragment-manifest.js?v=release-20260929',
+  './modules/bootstrap/html-fragment-manifest.js?v=feedback-workbench-20260930',
   './modules/bootstrap/document-loader.js',
-  './generated/html-fragments/document-head.js?v=release-20260929',
+  './generated/html-fragments/document-head.js?v=feedback-workbench-20260930',
   './generated/html-fragments/intro-and-home.js',
   './generated/html-fragments/health-and-couple.js',
   './generated/html-fragments/cphone.js',
@@ -25,7 +25,7 @@ const CORE_URLS_TO_CACHE = [
   './generated/html-fragments/worldbook-and-presets.js',
   './generated/html-fragments/api-settings-core.js',
   './generated/html-fragments/api-settings-providers.js',
-  './generated/html-fragments/api-settings-data.js?v=feedback-20260929',
+  './generated/html-fragments/api-settings-data.js?v=feedback-20260930-workbench',
   './generated/html-fragments/data-and-social-list.js',
   './generated/html-fragments/chat-interface.js',
   './generated/html-fragments/appearance-and-thoughts.js',
