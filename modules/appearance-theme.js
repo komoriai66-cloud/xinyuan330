@@ -411,6 +411,17 @@
         // 检查是否是有效的外观配置对象
         if (data.wallpaper || data.globalCss || data.appIcons || data.theme) {
           Object.assign(state.globalSettings, data);
+          // 兼容旧外观文件：缺少来源字段时按导入后的旧字体字段恢复，
+          // 避免继承当前草稿之外的来源选择而忽略导入字体。
+          if (!Object.prototype.hasOwnProperty.call(data, 'fontSourceMode') &&
+              ('fontUrl' in data || 'fontLocalData' in data)) {
+            state.globalSettings.fontSourceMode = state.globalSettings.fontLocalData ? 'local'
+              : state.globalSettings.fontUrl ? 'url' : 'default';
+          }
+          if ('fontLocalData' in data) {
+            state.globalSettings.fontLocalName = data.fontLocalName || '';
+            state.globalSettings.fontLocalSize = data.fontLocalSize || 0;
+          }
           await db.globalSettings.put(state.globalSettings);
 
           // 应用设置
@@ -551,6 +562,9 @@
         // 字体
         fontUrl: state.globalSettings.fontUrl || "",
         fontLocalData: state.globalSettings.fontLocalData || "",
+        fontLocalName: state.globalSettings.fontLocalName || "",
+        fontLocalSize: state.globalSettings.fontLocalSize || 0,
+        fontSourceMode: normalizeFontSettings(state.globalSettings).fontSourceMode,
         fontScope: state.globalSettings.fontScope || { all: true },
         globalFontSize: state.globalSettings.globalFontSize || 16,
         // 布局排序
@@ -918,6 +932,9 @@
       state.globalSettings.globalCss = '';
       state.globalSettings.fontUrl = '';
       state.globalSettings.fontLocalData = '';
+      state.globalSettings.fontLocalName = '';
+      state.globalSettings.fontLocalSize = 0;
+      state.globalSettings.fontSourceMode = 'default';
       state.globalSettings.theme = 'light';
       state.globalSettings.appIcons = defaultAppIcons;
       state.globalSettings.cphoneAppIcons = defaultCPhoneIcons;

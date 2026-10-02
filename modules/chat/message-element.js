@@ -190,14 +190,15 @@
       if (msg.type === 'offline_text') {
 
         const originalText = msg.content || `${msg.dialogue || ''} ${msg.description || ''}`.trim();
-        const renderedOfflineText = await applyRenderingRulesDetailed(originalText, chat.id);
+        const renderedOfflineText = await applyRenderingRulesDetailed(originalText, chat.id, { messageId: msg.id ?? msg.timestamp, timestamp: msg.timestamp, role: msg.role, type: msg.type, field: 'content', isGroup: !!chat.isGroup });
         const combinedText = renderedOfflineText.content;
+        if (renderedOfflineText.excluded) wrapper.hidden = true;
 
         const useContinuousLayout = chat && chat.settings && chat.settings.offlineContinuousLayout;
 
-        if (renderedOfflineText.isHtml && combinedText !== originalText) {
+        if (renderedOfflineText.isHtml && !renderedOfflineText.inlineOnly && combinedText !== originalText) {
           contentHtml = combinedText;
-          bubble.classList.add('is-card-like');
+          if (!renderedOfflineText.inlineOnly) bubble.classList.add('is-card-like');
         } else if (useContinuousLayout) {
           // 连续排版模式：整体渲染，对话部分只加样式不拆段
           const dialogueRegex = /(「.*?」|".*?")/gs;
@@ -455,8 +456,9 @@
         } else {
           // AI的语音消息（通常使用TTS）
           const canPlayTTS = !chat.isGroup && chat.settings.enableTts !== false;
-          const voiceId = chat.settings.minimaxVoiceId || 'female-shaonv-jingpin';
-          const voiceIdAttribute = canPlayTTS ? `data-voice-id="${voiceId}"` : '';
+          const voiceId = window.ttsProvider.provider(chat) === 'elevenlabs'
+            ? window.ttsProvider.voiceId(chat) : chat.settings.minimaxVoiceId || 'female-shaonv-jingpin';
+          const voiceIdAttribute = canPlayTTS ? `data-tts-provider="${window.ttsProvider.provider(chat)}" data-voice-id="${String(voiceId).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char])}"` : '';
           
           // 【双语模式】保存原始内容和播放内容
           const originalContentAttr = chat.settings.enableBilingualMode ? 
@@ -822,11 +824,12 @@
       return wrapper;
     } else {
       const processedContent = String(rawContent);
-      const renderedText = await applyRenderingRulesDetailed(processedContent, chat.id);
+      const renderedText = await applyRenderingRulesDetailed(processedContent, chat.id, { messageId: msg.id ?? msg.timestamp, timestamp: msg.timestamp, role: msg.role, type: msg.type, field: 'content', isGroup: !!chat.isGroup });
       const processedByRule = renderedText.content;
+      if (renderedText.excluded) wrapper.hidden = true;
       if (renderedText.isHtml && processedByRule !== processedContent) {
         contentHtml = processedByRule;
-        bubble.classList.add('is-card-like');
+        if (!renderedText.inlineOnly) bubble.classList.add('is-card-like');
       } else {
 
 

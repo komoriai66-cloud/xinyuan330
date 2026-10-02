@@ -150,4 +150,10 @@ db.version(63).stores({
   customWidgetInstances: '&id, packageId, updatedAt'
 });
 
+// 幕后沟通与生成偏好独立保存，不进入角色历史或记忆。
+db.version(64).stores({
+  modelDiscussions: '&id, chatId, updatedAt',
+  generationPreferences: '&id, chatId, scope, updatedAt'
+});
+
 window.db = db;

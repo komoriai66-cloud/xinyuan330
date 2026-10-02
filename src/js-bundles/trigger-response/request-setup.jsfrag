@@ -1,7 +1,13 @@
-  async function triggerAiResponse() {
-    if (!state.activeChatId) return;
-    const chatId = state.activeChatId;
-    const chat = state.chats[state.activeChatId];
+  async function triggerAiResponse(options = {}) {
+    const chatId = options.chatId || state.activeChatId;
+    if (!chatId) return;
+    const chat = options.previewChat || state.chats[chatId];
+    if (!chat) return;
+    const isPreview = options.preview === true;
+    let generationGuidance = null;
+    if (!isPreview && window.GenerationAdjustments) {
+      if (window.GenerationAdjustments.isBusy(chatId)) return;
+    }
     let replyGuardianTaskId = null;
     let replyGuardianTaskSettled = false;
     async function safelyUpdateReplyGuardian(operation) {
@@ -21,20 +27,22 @@
         thoughtChainContextMiddle = chunks.middle.map(c => c.content).join('\n');
     }
 
-    let isViewingThisChat = document.getElementById('chat-interface-screen').classList.contains('active') && state.activeChatId === chatId;
+    let isViewingThisChat = !isPreview && document.getElementById('chat-interface-screen').classList.contains('active') && state.activeChatId === chatId;
 
-    setAvatarActingState(chatId, true);
+    if (!isPreview) setAvatarActingState(chatId, true);
     const chatHeaderTitle = document.getElementById('chat-header-title');
     const typingIndicator = document.getElementById('typing-indicator');
     const stopBtn = document.getElementById('stop-api-call-btn');
 
     const chatListItem = document.querySelector(`.chat-list-item[data-chat-id="${chatId}"]`);
     const avatarInList = chatListItem ? chatListItem.querySelector('.avatar') : null;
-    if (avatarInList) {
+    if (!isPreview && avatarInList) {
       avatarInList.classList.add('is-acting');
     }
 
-    if (chat.isGroup) {
+    if (isPreview) {
+      // 候选只在独立面板预览，不改变角色输入状态。
+    } else if (chat.isGroup) {
       if (typingIndicator) {
         typingIndicator.textContent = '成员们正在输入...';
         typingIndicator.style.display = 'block';
@@ -51,6 +59,7 @@
     }
     let needsImmediateReaction = false;
     try {
+      if (!isPreview && window.GenerationAdjustments) window.GenerationAdjustments.begin(chatId);
       // 获取API配置（优先使用角色独立配置）
       let apiConfig = state.apiConfig;
       if (chat.apiOverride && chat.apiOverride.enabled) {
@@ -67,7 +76,8 @@
         model
       } = apiConfig;
       
-      if (!proxyUrl || !apiKey || !model) {
+      if ((!proxyUrl || !apiKey || !model) && !options.candidateContent) {
+        if (isPreview) throw new Error('请先配置 API 地址、密钥和模型。');
         alert('请先在API设置中配置反代地址、密钥并选择模型。');
         if (chat.isGroup) {
           if (typingIndicator) typingIndicator.style.display = 'none';
@@ -84,7 +94,7 @@
       const isVideoCallRequest = lastMessage && lastMessage.role === 'system' && lastMessage.content.includes('视频通话请求');
       const isVoiceCallRequest = lastMessage && lastMessage.role === 'system' && lastMessage.content.includes('语音通话请求');
 
-      if (isVideoCallRequest) {
+      if (isVideoCallRequest && !isPreview && !options.candidateContent) {
         console.log(`检测到视频通话请求，为角色 "${chat.name}" 触发专属决策流程...`);
 
         let callDecisionPrompt;
@@ -230,7 +240,7 @@
         }
       }
 
-      if (isVoiceCallRequest) {
+      if (isVoiceCallRequest && !isPreview && !options.candidateContent) {
         console.log(`检测到语音通话请求，为角色 "${chat.name}" 触发专属决策流程...`);
 
         let callDecisionPrompt;
@@ -429,7 +439,7 @@
 
 
 
-      if (!chat.isGroup && chat.relationship?.status === 'pending_ai_approval') {
+      if (!isPreview && !options.candidateContent && !chat.isGroup && chat.relationship?.status === 'pending_ai_approval') {
         console.log(`为角色 "${chat.name}" 触发带理由的好友申请决策流程...`);
         const contextSummary = chat.history
           .filter(m => !m.isHidden)
@@ -547,7 +557,7 @@
 
       // 判断是否使用自定义时间
       let currentTime, localizedDate, timeOfDayGreeting;
-      const customTimeInfo = window.getCustomTime ? window.getCustomTime() : null;
+      const customTimeInfo = window.getCustomTime ? window.getCustomTime(chat) : null;
       const customTimeEnabled = customTimeInfo && customTimeInfo.enabled;
       
       if (customTimeEnabled) {
@@ -640,7 +650,7 @@ ${linkedContents}
 
 
       let musicContext = '';
-      if (musicState.isActive && musicState.activeChatId === chatId) {
+      if (window.isMusicAwareChat ? window.isMusicAwareChat(chatId) : (musicState.isActive && musicState.activeChatId === chatId)) {
         const currentTrack = musicState.currentIndex > -1 ? musicState.playlist[musicState.currentIndex] : null;
         const playlistInfo = musicState.playlist.map(t => `"${t.name}"`).join(', ');
 
@@ -666,7 +676,7 @@ ${linkedContents}
         -   **正在播放**: ${currentTrack ? `《${currentTrack.name}》 - ${currentTrack.artist}` : '无'}
         -   **可用播放列表**: [${playlistInfo}]
         ${lyricsContext}
-        ${chat.settings.enableMusicTimeAwareness ? `-   **累计一起听歌时长**: 你们历史以来已经累计一起听了 ${(musicState.totalElapsedTime / 3600).toFixed(1)} 小时的歌` : ''}
+        ${chat.settings.enableMusicTimeAwareness ? `-   **累计一起听歌时长**: 你们历史以来已经累计一起听了 ${((window.getMusicElapsedTime ? window.getMusicElapsedTime(chatId) : musicState.totalElapsedTime) / 3600).toFixed(1)} 小时的歌` : ''}
         -   **你的任务**: 你可以根据对话内容和氛围，使用 "change_music" 指令切换到播放列表中的任何一首歌，以增强互动体验。
         `;
       }

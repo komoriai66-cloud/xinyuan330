@@ -541,29 +541,6 @@
                }
            }
 
-           @media (max-width: 420px) {
-               #character-profile-modal {
-                   padding-top: max(12px, var(--safe-top, 0px));
-                   padding-right: max(12px, var(--safe-right, 0px));
-                   padding-bottom: max(12px, var(--safe-bottom, 0px), var(--keyboard-inset, 0px));
-                   padding-left: max(12px, var(--safe-left, 0px));
-               }
-
-               #character-profile-modal .character-profile-content {
-                   width: 100%;
-                   max-width: 320px;
-                   height: min(75vh, calc(var(--app-viewport-height, 100vh) - 24px));
-                   max-height: 580px;
-               }
-           }
-
-           @media (max-height: 520px) and (orientation: landscape) {
-               #character-profile-modal .character-profile-content {
-                   height: calc(var(--app-viewport-height, 100vh) - 16px);
-                   max-height: none;
-               }
-           }
-
            @media (prefers-reduced-motion: reduce) {
                #character-profile-modal {
                    -webkit-backdrop-filter: none;

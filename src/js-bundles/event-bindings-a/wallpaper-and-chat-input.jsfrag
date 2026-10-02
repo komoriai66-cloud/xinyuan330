@@ -304,6 +304,7 @@
       // 优先使用手写输入框的值，如果为空则使用下拉框的值
       const modelInput = document.getElementById('model-input').value.trim();
       nextApiConfig.model = modelInput || document.getElementById('model-select').value;
+      Object.assign(nextApiConfig, window.ttsSettings.readApi());
       nextApiConfig.minimaxGroupId = document.getElementById('minimax-group-id').value.trim();
       nextApiConfig.minimaxApiKey = document.getElementById('minimax-api-key').value.trim();
       nextApiConfig.minimaxModel = document.getElementById('minimax-model-select').value;

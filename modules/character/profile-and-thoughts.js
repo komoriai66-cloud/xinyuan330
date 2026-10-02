@@ -335,8 +335,8 @@
     }
 
     const [renderedVoice, renderedJottings] = await Promise.all([
-      applyRenderingRules(chat.heartfeltVoice || '...', chatId),
-      applyRenderingRules(chat.randomJottings || '...', chatId)
+      applyRenderingRules(chat.heartfeltVoice || '...', chatId, { messageId: 'current-thoughts', role: 'assistant', type: 'thoughts', field: 'heartfeltVoice' }),
+      applyRenderingRules(chat.randomJottings || '...', chatId, { messageId: 'current-thoughts', role: 'assistant', type: 'thoughts', field: 'randomJottings' })
     ]);
     if (requestId !== thoughtsOpenRequestId || !modal.classList.contains('visible')) return;
 
@@ -638,8 +638,8 @@
 
 
     const [renderedVoice, renderedJottings] = await Promise.all([
-      applyRenderingRules(thought.heartfeltVoice || '...', chatId),
-      applyRenderingRules(thought.randomJottings || '...', chatId)
+      applyRenderingRules(thought.heartfeltVoice || '...', chatId, { messageId: thought.id ?? thought.timestamp, timestamp: thought.timestamp, role: 'assistant', type: 'thoughts', field: 'heartfeltVoice' }),
+      applyRenderingRules(thought.randomJottings || '...', chatId, { messageId: thought.id ?? thought.timestamp, timestamp: thought.timestamp, role: 'assistant', type: 'thoughts', field: 'randomJottings' })
     ]);
 
 
@@ -647,7 +647,7 @@
     if (thought.customThoughts && Object.keys(thought.customThoughts).length > 0) {
       const renderedCustomEntries = await Promise.all(Object.entries(thought.customThoughts).map(async ([key, value]) => [
         key,
-        await applyRenderingRules(value || '...', chatId)
+        await applyRenderingRules(value || '...', chatId, { messageId: thought.id ?? thought.timestamp, timestamp: thought.timestamp, role: 'assistant', type: 'thoughts', field: 'custom', fieldKey: key })
       ]));
       for (const [key, renderedCustom] of renderedCustomEntries) {
         customThoughtsHtml += `

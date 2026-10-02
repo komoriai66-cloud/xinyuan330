@@ -17,6 +17,8 @@
 
   async function appendMessage(msg, chat, isInitialLoad = false) {
 
+    if (!isInitialLoad) window.MemoryWorldTime?.capture(msg, chat);
+
     const messagesContainer = document.getElementById('chat-messages');
     const typingIndicator = document.getElementById('typing-indicator');
     const renderVersion = chatRenderVersion;

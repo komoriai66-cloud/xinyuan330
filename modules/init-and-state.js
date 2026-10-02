@@ -296,6 +296,7 @@ if (!window.__appBootstrapStarted) {
     });
     state.chats = chatsArr.reduce((acc, chat) => {
       if (!chat) return acc;
+      window.MemoryWorldTime?.observe(chat);
       if (typeof chat.unreadCount === 'undefined') chat.unreadCount = 0;
       if (chat.isGroup) {
         if (typeof chat.settings.enableBackgroundActivity === 'undefined') {
@@ -518,6 +519,7 @@ if (!window.__appBootstrapStarted) {
       couplespaceProxyUrl: '',
       couplespaceApiKey: '',
       couplespaceModel: '',
+      ...window.ttsProvider.defaults,
       minimaxGroupId: '',
       minimaxApiKey: '',
       minimaxModel: 'speech-01',

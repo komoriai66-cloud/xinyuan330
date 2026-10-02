@@ -57,6 +57,7 @@ window.initEventBindingsB = function(state, db) {
 
             // 长期记忆（总结的记忆）
             longTermMemory: chat.longTermMemory ? JSON.parse(JSON.stringify(chat.longTermMemory)) : [],
+            normalMemory: window.normalMemoryManager?.transfer(chat) || null,
             structuredMemory: chat.structuredMemory ? JSON.parse(JSON.stringify(chat.structuredMemory)) : null,
             variableMemory: cloneVectorMemoryForArchive(chat.variableMemory),
             vectorMemory: cloneVectorMemoryForArchive(chat.vectorMemory),
@@ -85,6 +86,17 @@ window.initEventBindingsB = function(state, db) {
               // 语音通话
               enableTts: chat.settings.enableTts,
               minimaxVoiceId: chat.settings.minimaxVoiceId,
+               ttsProvider: chat.settings.ttsProvider || 'minimax',
+               elevenlabsVoiceId: chat.settings.elevenlabsVoiceId || '',
+               elevenlabsModel: chat.settings.elevenlabsModel || '',
+               elevenlabsVoiceSettings: { ...(chat.settings.elevenlabsVoiceSettings || {}) },
+               ttsSpeed: chat.settings.ttsSpeed ?? 1,
+               minimaxTtsSpeed: chat.settings.minimaxTtsSpeed ?? (window.ttsProvider.provider(chat) === 'minimax' ? chat.settings.ttsSpeed ?? 1 : 1),
+               elevenlabsTtsSpeed: chat.settings.elevenlabsTtsSpeed ?? (window.ttsProvider.provider(chat) === 'elevenlabs' ? chat.settings.ttsSpeed ?? 1 : 1),
+               ttsStreaming: chat.settings.ttsStreaming === true,
+               ttsSplitLongText: chat.settings.ttsSplitLongText === true,
+               ttsSaveAudio: chat.settings.ttsSaveAudio === true,
+
               ttsLanguage: chat.settings.ttsLanguage,
               enableBilingualMode: chat.settings.enableBilingualMode,
               bilingualDisplayMode: chat.settings.bilingualDisplayMode,
@@ -211,11 +223,14 @@ window.initEventBindingsB = function(state, db) {
 
       try {
         const currentEmbeddingApiKey = chat.variableMemory?.settings?.embeddingApiKey || chat.vectorMemory?.settings?.embeddingApiKey || '';
+        if (window.normalMemoryManager?.locks.has(chat)) throw new Error('请先暂停普通记忆梳理再读取存档');
+        window.normalMemoryManager?.validateState(archive.data.normalMemory);
         // 恢复聊天记录
         chat.history = JSON.parse(JSON.stringify(archive.data.history));
 
         // 恢复长期记忆（总结的记忆）
         chat.longTermMemory = archive.data.longTermMemory ? JSON.parse(JSON.stringify(archive.data.longTermMemory)) : [];
+        window.normalMemoryManager?.importState(chat, archive.data.normalMemory, 'replace');
         if (Object.prototype.hasOwnProperty.call(archive.data, 'structuredMemory')) {
           chat.structuredMemory = archive.data.structuredMemory ? JSON.parse(JSON.stringify(archive.data.structuredMemory)) : null;
         }
@@ -254,6 +269,10 @@ window.initEventBindingsB = function(state, db) {
         if (savedSettings.longTermMemoryLimit !== undefined) chat.settings.longTermMemoryLimit = savedSettings.longTermMemoryLimit;
         chat.settings.enableTts = savedSettings.enableTts;
         chat.settings.minimaxVoiceId = savedSettings.minimaxVoiceId;
+        for (const key of ['ttsProvider', 'elevenlabsVoiceId', 'elevenlabsModel', 'elevenlabsVoiceSettings', 'ttsSpeed', 'minimaxTtsSpeed', 'elevenlabsTtsSpeed', 'ttsSplitLongText', 'ttsStreaming', 'ttsSaveAudio']) {
+          if (Object.prototype.hasOwnProperty.call(savedSettings, key)) chat.settings[key] = savedSettings[key];
+        }
+
         chat.settings.ttsLanguage = savedSettings.ttsLanguage;
         if (savedSettings.enableBilingualMode !== undefined) chat.settings.enableBilingualMode = savedSettings.enableBilingualMode;
         if (savedSettings.bilingualDisplayMode !== undefined) chat.settings.bilingualDisplayMode = savedSettings.bilingualDisplayMode;

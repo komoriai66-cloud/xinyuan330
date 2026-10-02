@@ -69,7 +69,7 @@
 
       // 判断是否使用自定义时间
       let currentTime, localizedDate;
-      const customTimeInfo2 = window.getCustomTime ? window.getCustomTime() : null;
+      const customTimeInfo2 = window.getCustomTime ? window.getCustomTime(chat) : null;
       const customTimeEnabled = customTimeInfo2 && customTimeInfo2.enabled;
       
       if (customTimeEnabled) {
@@ -135,7 +135,7 @@
           } else if (memMode === 'structured' && window.structuredMemoryManager) {
             memberMemContent = window.structuredMemoryManager.serializeForPrompt(memberChat);
           } else if (memberChat.longTermMemory && memberChat.longTermMemory.length > 0) {
-            memberMemContent = memberChat.longTermMemory.map(mem => `- ${mem.content}`).join('\n');
+            memberMemContent = getMemoryContextForPrompt(memberChat);
           }
 
           if (memberMemContent && memberMemContent.trim() !== '') {
@@ -373,7 +373,7 @@ ${longTermMemoryContext}
           const memMode = chat.settings?.memoryMode || (chat.settings?.enableStructuredMemory ? 'structured' : 'diary');
           if (memMode === 'vector') return '(群聊自身的变量记忆 - 由检索引擎动态注入)';
           if (memMode === 'structured' && window.structuredMemoryManager) return window.structuredMemoryManager.serializeForPrompt(chat);
-          return chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
+          return getMemoryContextForPrompt(chat);
         })()}       
         ${multiLayeredSummaryContext_group}
         ${linkedMemoryContext}

@@ -13,6 +13,7 @@ async function checkAndTriggerAutoSummary(chatId) {
 
   if (memoryMode === 'vector' && window.vectorMemoryManager) {
     const vm = window.vectorMemoryManager.getVariableMemory(chat);
+    if (vm.settings.autoExtractionBlocked || window.vectorMemoryManager._extractionLocks.get(chat) || ['running', 'failed', 'paused'].includes(vm.extractionTask?.status)) return;
     const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
     const historyLen = chat.history ? chat.history.length : 0;
     const unextractedMessages = (chat.history || []).slice(lastIdx + 1)
@@ -259,8 +260,10 @@ ${transcriptText}
         source: chat.isGroup ? 'group_call_summary' : 'call_summary'
       };
       if (!targetMemoryChat.longTermMemory) targetMemoryChat.longTermMemory = [];
+      window.normalMemoryManager?.attachSource(newMemoryEntry, null, chat);
       targetMemoryChat.longTermMemory.push(newMemoryEntry);
       await db.chats.put(targetMemoryChat);
+      window.normalMemoryManager?.afterSummary(targetMemoryChat, newMemoryEntry, null, chat).catch(error => console.warn('[普通记忆]', error));
       console.log(`通话记录已成功总结并存入角色"${targetMemoryChat.name}"的长期记忆中。`);
 
       return true;
@@ -579,7 +582,7 @@ async function summarizeExistingLongTermMemory(chatId) {
 
   if (!confirmed) return;
 
-  const memoryContent = memoriesToRefine.map(mem => `- ${mem.content}`).join('\n');
+  const memoryContent = memoriesToRefine.map(mem => `- [保存时间：${new Date(mem.timestamp).toLocaleString('zh-CN')}；事件时间以正文为准] ${mem.content}`).join('\n');
   const userNickname = targetChatForRefine.settings.myNickname || (state.qzoneSettings.nickname || '用户');
 
 
@@ -595,7 +598,7 @@ async function summarizeExistingLongTermMemory(chatId) {
     timeHeader = `
 # 当前时间
 - **今天是：${today}**`;
-    timeRule = `3.  **【时间转换铁律 (必须遵守)】**: 如果记忆中提到了相对时间（如"明天"、"下周"），你【必须】结合"今天是${today}"这个信息，将其转换为【具体的公历日期】。`;
+    timeRule = `3. **时间解释**: 记忆中的"明天"、"下周"只能依据可靠的原对话日期解释。保存时间和今天不是原对话日期，不能用今天重算旧相对日期。无法确定则保留时间不明。日期已过不能证明计划完成或未完成，明确的完成、取消、改期或纠正需要关联到同一事件。`;
   }
   const summaryWorldBook = state.worldBooks.find(wb => wb.name === '总结设定'); // 确保这个名字和你创建的世界书一致
   let summarySettingContext = '';
@@ -800,7 +803,7 @@ ${memoryContent}
 
     targetChatForRefine.longTermMemory = [...memoriesBeforeRange, newMemoryEntry, ...memoriesAfterRange];
 
-    targetChatForRefine.lastMemorySummaryTimestamp = Date.now();
+    // 精炼已有记忆不推进聊天总结进度，避免跳过尚未总结的消息。
     await db.chats.put(targetChatForRefine);
 
     if (document.getElementById('long-term-memory-screen').classList.contains('active')) {
@@ -856,6 +859,8 @@ async function triggerAutoSummary(chatId, force = false, customRange = null) {
 
   const timeRangeStr = `${formatDateTime(startMsg.timestamp)} 至 ${formatDateTime(endMsg.timestamp)}`;
   const formattedHistory = messagesToSummarize.map(msg => {
+    const remarkEvent = window.RemarkNames.formatMemoryEvent(msg, chat);
+    if (remarkEvent) return remarkEvent;
     if (msg.isHidden && msg.role === 'system' && typeof msg.content === 'string' && msg.content.includes('内心独白')) {
       return msg.content;
     }
@@ -910,7 +915,9 @@ async function triggerAutoSummary(chatId, force = false, customRange = null) {
       contentToSummarize = `[${msg.type || '复杂消息'}]`;
     }
 
-    const msgTime = new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const msgTime = (chat.settings.enableTimePerception || window.normalMemoryManager?.settings(chat).interpretation)
+      ? formatDateTime(msg.timestamp)
+      : new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
     return `[${msgTime}] ${sender}: ${prefix}${contentToSummarize}`;
 
   }).filter(Boolean).join('\n');
@@ -1019,6 +1026,10 @@ ${formattedHistory}
 现在，请以"${chat.originalName}"的身份，开始你的客观总结。`;
 
   }
+  if (window.normalMemoryManager?.mode(chat) === 'diary' && window.normalMemoryManager.settings(chat).interpretation) {
+    systemPrompt += '\n# 记忆时间与状态\n每条消息的日期才是解释相对时间的依据，不能用当前日期改写旧聊天。分别写清愿望、计划、已发生事实；履行、取消和改期需要明确记录。日期过去不代表完成。正文保留事件日期、参与者与关键结果；不能将现实、剧情或假设混为一事。';
+  }
+
 
   try {
     const useSecondaryApi = state.apiConfig.secondaryProxyUrl && state.apiConfig.secondaryApiKey && state.apiConfig.secondaryModel;
@@ -1077,8 +1088,10 @@ ${formattedHistory}
                 source: `group_summary_from_${chat.name}`
               };
               if (!memberChat.longTermMemory) memberChat.longTermMemory = [];
+              window.normalMemoryManager?.attachSource(newMemoryEntry, messagesToSummarize, chat);
               memberChat.longTermMemory.push(newMemoryEntry);
               await db.chats.put(memberChat);
+              window.normalMemoryManager?.afterSummary(memberChat, newMemoryEntry, messagesToSummarize, chat).catch(error => console.warn('[普通记忆]', error));
               memoriesAddedCount++;
             }
           }
@@ -1098,8 +1111,11 @@ ${formattedHistory}
           timestamp: Date.now(),
           source: 'auto'
         };
+        if (!chat.longTermMemory) chat.longTermMemory = [];
+        window.normalMemoryManager?.attachSource(newMemoryEntry, messagesToSummarize, chat);
         chat.longTermMemory.push(newMemoryEntry);
         await db.chats.put(chat);
+        window.normalMemoryManager?.afterSummary(chat, newMemoryEntry, messagesToSummarize, chat).catch(error => console.warn('[普通记忆]', error));
         console.log('自动总结成功：已成功添加 1 条新的长期记忆！');
       } else {
         throw new Error("AI返回了空的或格式不正确的总结内容。");

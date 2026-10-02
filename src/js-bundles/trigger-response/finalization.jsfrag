@@ -757,10 +757,13 @@
           );
           replyGuardianTaskSettled = !!completedTask;
         }
-        await triggerAiResponse();
+        if (window.GenerationAdjustments) window.GenerationAdjustments.end(chatId);
+        await triggerAiResponse({ chatId });
         return;
       }
       await db.chats.put(chat);
+      if (window.GenerationAdjustments) await window.GenerationAdjustments.consume(generationGuidance);
+      if (options.onCommitted) options.onCommitted();
       if (replyGuardianTaskId && window.ReplyTaskStore) {
         const completedTask = await safelyUpdateReplyGuardian(() =>
           window.ReplyTaskStore.complete(replyGuardianTaskId, { messageCount: messagesArray.length })
@@ -784,6 +787,7 @@
 
 
     } catch (error) {
+      if (isPreview || options.candidateContent) throw error;
 
       if (replyGuardianTaskId && window.ReplyTaskStore) {
         // 即使持久化失败状态本身失败，也不能在 finally 中把真实失败误记为完成。
@@ -819,6 +823,8 @@
 
       videoCallState.isAwaitingResponse = false;
     } finally {
+      if (!isPreview) {
+      if (window.GenerationAdjustments) window.GenerationAdjustments.end(chatId);
       // 某些合法的指令处理分支会提前 return；只要未进入错误分支，就将已有响应记为完成。
       if (replyGuardianTaskId && !replyGuardianTaskSettled && window.ReplyTaskStore) {
         try {
@@ -860,6 +866,7 @@
         try { triggerCoupleSpaceAiDecide(chatId, 'chat'); } catch(e) {}
       }
       stopSilentAudio();
+      }
     }
   }
 

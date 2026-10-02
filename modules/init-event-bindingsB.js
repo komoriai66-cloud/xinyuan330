@@ -57,6 +57,7 @@ window.initEventBindingsB = function(state, db) {
 
             // 长期记忆（总结的记忆）
             longTermMemory: chat.longTermMemory ? JSON.parse(JSON.stringify(chat.longTermMemory)) : [],
+            normalMemory: window.normalMemoryManager?.transfer(chat) || null,
             structuredMemory: chat.structuredMemory ? JSON.parse(JSON.stringify(chat.structuredMemory)) : null,
             variableMemory: cloneVectorMemoryForArchive(chat.variableMemory),
             vectorMemory: cloneVectorMemoryForArchive(chat.vectorMemory),
@@ -85,6 +86,17 @@ window.initEventBindingsB = function(state, db) {
               // 语音通话
               enableTts: chat.settings.enableTts,
               minimaxVoiceId: chat.settings.minimaxVoiceId,
+               ttsProvider: chat.settings.ttsProvider || 'minimax',
+               elevenlabsVoiceId: chat.settings.elevenlabsVoiceId || '',
+               elevenlabsModel: chat.settings.elevenlabsModel || '',
+               elevenlabsVoiceSettings: { ...(chat.settings.elevenlabsVoiceSettings || {}) },
+               ttsSpeed: chat.settings.ttsSpeed ?? 1,
+               minimaxTtsSpeed: chat.settings.minimaxTtsSpeed ?? (window.ttsProvider.provider(chat) === 'minimax' ? chat.settings.ttsSpeed ?? 1 : 1),
+               elevenlabsTtsSpeed: chat.settings.elevenlabsTtsSpeed ?? (window.ttsProvider.provider(chat) === 'elevenlabs' ? chat.settings.ttsSpeed ?? 1 : 1),
+               ttsStreaming: chat.settings.ttsStreaming === true,
+               ttsSplitLongText: chat.settings.ttsSplitLongText === true,
+               ttsSaveAudio: chat.settings.ttsSaveAudio === true,
+
               ttsLanguage: chat.settings.ttsLanguage,
               enableBilingualMode: chat.settings.enableBilingualMode,
               bilingualDisplayMode: chat.settings.bilingualDisplayMode,
@@ -211,11 +223,14 @@ window.initEventBindingsB = function(state, db) {
 
       try {
         const currentEmbeddingApiKey = chat.variableMemory?.settings?.embeddingApiKey || chat.vectorMemory?.settings?.embeddingApiKey || '';
+        if (window.normalMemoryManager?.locks.has(chat)) throw new Error('请先暂停普通记忆梳理再读取存档');
+        window.normalMemoryManager?.validateState(archive.data.normalMemory);
         // 恢复聊天记录
         chat.history = JSON.parse(JSON.stringify(archive.data.history));
 
         // 恢复长期记忆（总结的记忆）
         chat.longTermMemory = archive.data.longTermMemory ? JSON.parse(JSON.stringify(archive.data.longTermMemory)) : [];
+        window.normalMemoryManager?.importState(chat, archive.data.normalMemory, 'replace');
         if (Object.prototype.hasOwnProperty.call(archive.data, 'structuredMemory')) {
           chat.structuredMemory = archive.data.structuredMemory ? JSON.parse(JSON.stringify(archive.data.structuredMemory)) : null;
         }
@@ -254,6 +269,10 @@ window.initEventBindingsB = function(state, db) {
         if (savedSettings.longTermMemoryLimit !== undefined) chat.settings.longTermMemoryLimit = savedSettings.longTermMemoryLimit;
         chat.settings.enableTts = savedSettings.enableTts;
         chat.settings.minimaxVoiceId = savedSettings.minimaxVoiceId;
+        for (const key of ['ttsProvider', 'elevenlabsVoiceId', 'elevenlabsModel', 'elevenlabsVoiceSettings', 'ttsSpeed', 'minimaxTtsSpeed', 'elevenlabsTtsSpeed', 'ttsSplitLongText', 'ttsStreaming', 'ttsSaveAudio']) {
+          if (Object.prototype.hasOwnProperty.call(savedSettings, key)) chat.settings[key] = savedSettings[key];
+        }
+
         chat.settings.ttsLanguage = savedSettings.ttsLanguage;
         if (savedSettings.enableBilingualMode !== undefined) chat.settings.enableBilingualMode = savedSettings.enableBilingualMode;
         if (savedSettings.bilingualDisplayMode !== undefined) chat.settings.bilingualDisplayMode = savedSettings.bilingualDisplayMode;
@@ -1341,86 +1360,7 @@ window.initEventBindingsB = function(state, db) {
     });
 
 
-    const fontUrlInput = document.getElementById('font-url-input');
-    fontUrlInput.addEventListener('input', () => applyCustomFont(fontUrlInput.value.trim(), true));
-
-    // 本地字体上传
-    document.getElementById('font-local-upload-btn').addEventListener('click', () => {
-      document.getElementById('font-local-file-input').click();
-    });
-    document.getElementById('font-local-file-input').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const MAX_SIZE = 10 * 1024 * 1024; // 10MB 硬限制
-      const WARN_SIZE = 5 * 1024 * 1024;  // 5MB 警告
-      if (file.size > MAX_SIZE) {
-        alert('字体文件超过 10MB，为避免闪退已拒绝加载。请选择更小的字体文件。');
-        this.value = null;
-        return;
-      }
-      if (file.size > WARN_SIZE) {
-        document.getElementById('font-local-warning').style.display = 'block';
-      } else {
-        document.getElementById('font-local-warning').style.display = 'none';
-      }
-      const reader = new FileReader();
-      reader.onload = function(ev) {
-        const dataUrl = ev.target.result;
-        state.globalSettings.fontLocalData = dataUrl;
-        document.getElementById('font-local-filename').textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(2) + 'MB)';
-        document.getElementById('font-local-clear-btn').style.display = 'inline-block';
-        document.getElementById('font-url-input').disabled = true;
-        document.getElementById('font-url-input').placeholder = '已使用本地字体，清除后可输入URL';
-        applyCustomFont(state.globalSettings.fontUrl || '', true);
-      };
-      reader.readAsDataURL(file);
-      this.value = null;
-    });
-    document.getElementById('font-local-clear-btn').addEventListener('click', function() {
-      state.globalSettings.fontLocalData = '';
-      document.getElementById('font-local-filename').textContent = '';
-      document.getElementById('font-local-warning').style.display = 'none';
-      this.style.display = 'none';
-      document.getElementById('font-url-input').disabled = false;
-      document.getElementById('font-url-input').placeholder = 'https://..../font.ttf';
-      applyCustomFont(fontUrlInput.value.trim(), true);
-    });
-
-    // 字体大小滑动条实时预览
-    document.getElementById('font-size-slider').addEventListener('input', function() {
-      document.getElementById('font-size-value').textContent = this.value;
-      state.globalSettings.globalFontSize = parseInt(this.value);
-      document.getElementById('font-preview').style.fontSize = this.value + 'px';
-    });
-
-    // 字体应用范围交互
-    document.getElementById('font-scope-all').addEventListener('change', function() {
-      const scopeList = document.getElementById('font-scope-list');
-      scopeList.style.display = this.checked ? 'none' : 'flex';
-      if (this.checked) {
-        document.querySelectorAll('#font-scope-list input[type="checkbox"]').forEach(cb => cb.checked = true);
-      }
-    });
-
-    document.getElementById('save-font-btn').addEventListener('click', async () => {
-      const newFontUrl = fontUrlInput.value.trim();
-      // 读取字体大小
-      const newFontSize = parseInt(document.getElementById('font-size-slider').value) || 16;
-      state.globalSettings.globalFontSize = newFontSize;
-      // 读取字体应用范围
-      const scopeAll = document.getElementById('font-scope-all').checked;
-      const newScope = { all: scopeAll };
-      document.querySelectorAll('#font-scope-list input[data-scope]').forEach(cb => {
-        newScope[cb.dataset.scope] = scopeAll ? true : cb.checked;
-      });
-      state.globalSettings.fontScope = newScope;
-      state.globalSettings.fontUrl = newFontUrl;
-      applyCustomFont(newFontUrl, false);
-      await db.globalSettings.put(state.globalSettings);
-      alert('字体设置已保存并应用！');
-    });
-    document.getElementById('reset-font-btn').addEventListener('click', resetToDefaultFont);
-    document.getElementById('reset-font-scope-btn').addEventListener('click', resetFontByScope);
+    bindFontSettingsEvents();
 
     document.querySelectorAll('#chat-list-bottom-nav .nav-item').forEach(item => {
       item.addEventListener('click', () => switchToChatListView(item.dataset.view));
@@ -4052,7 +3992,7 @@ window.initEventBindingsB = function(state, db) {
         const authorChat = state.chats[authorId];
         
         if (authorChat && authorChat.longTermMemory) {
-          const memoryIndex = authorChat.longTermMemory.findIndex(m => m.timestamp === memoryTimestamp);
+          const memoryIndex = authorChat.longTermMemory.findIndex(m => restoreBtn.dataset.normalMemoryId ? m.normalMemoryId === restoreBtn.dataset.normalMemoryId : m.timestamp === memoryTimestamp);
           if (memoryIndex !== -1) {
             const memory = authorChat.longTermMemory[memoryIndex];
             if (memory.originalMemories && Array.isArray(memory.originalMemories)) {
@@ -4077,12 +4017,12 @@ window.initEventBindingsB = function(state, db) {
       
       const editBtn = e.target.closest('.edit-memory-btn');
       if (editBtn) {
-        handleEditMemory(editBtn.dataset.authorId, parseInt(editBtn.dataset.memoryTimestamp));
+        handleEditMemory(editBtn.dataset.authorId, parseInt(editBtn.dataset.memoryTimestamp), editBtn.dataset.normalMemoryId || null);
         return;
       }
       const deleteBtn = e.target.closest('.delete-memory-btn');
       if (deleteBtn) {
-        handleDeleteMemory(deleteBtn.dataset.authorId, parseInt(deleteBtn.dataset.memoryTimestamp));
+        handleDeleteMemory(deleteBtn.dataset.authorId, parseInt(deleteBtn.dataset.memoryTimestamp), deleteBtn.dataset.normalMemoryId || null);
         return;
       }
     });

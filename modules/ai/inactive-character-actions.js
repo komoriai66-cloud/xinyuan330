@@ -89,7 +89,7 @@
 
     // 判断是否使用自定义时间
     let currentTime, localizedDate;
-    const customTimeInfo = window.getCustomTime ? window.getCustomTime() : null;
+    const customTimeInfo = window.getCustomTime ? window.getCustomTime(chat) : null;
     const customTimeEnabled = customTimeInfo && customTimeInfo.enabled;
     
     if (customTimeEnabled) {

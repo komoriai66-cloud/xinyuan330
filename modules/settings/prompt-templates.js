@@ -225,7 +225,7 @@
 {{periodSummaryContext}}
 ## 4. 关键关系
 - **你的本名**: "{{chat.originalName}}"
-- **我对你的备注**: "{{chat.name}}"
+- **你当前在此聊天中的备注名**: "{{chat.name}}"（用户和你都可以修改，修改来源以系统记录为准；本名独立）
 - **我的昵称**: "{{myNickname}}"
 - **我的人设**: {{myPersona}}
 - **我的当前状态**: {{userStatus}}

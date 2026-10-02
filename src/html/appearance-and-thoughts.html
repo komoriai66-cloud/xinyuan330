@@ -414,14 +414,14 @@
     <div id="font-settings-screen" class="screen">
       <!-- 1. iOS 原生毛玻璃顶部导航栏 -->
       <div class="font-ios-header">
-        <button class="font-nav-back back-btn" onclick="showScreen('home-screen')">
+        <button class="font-nav-back back-btn" id="font-back-btn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
           <span data-lang-key="back">设置</span>
         </button>
         <div class="font-nav-title" data-lang-key="fontSettingsTitle">字体设置</div>
-        <button class="font-header-save-btn" id="save-font-btn">保存</button>
+        <button class="font-header-save-btn" id="save-font-btn">保存并应用</button>
       </div>
 
       <!-- 2. 主体滚动容器 (iOS Inset Grouped) -->
@@ -436,18 +436,19 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 </div>
                 <div class="font-cell-texts">
-                  <span class="font-cell-main" data-lang-key="fontPreviewLabel">字体效果预览</span>
-                  <span class="font-cell-sub">跟随设置实时流体渲染</span>
+                  <span class="font-cell-main">显示字体预览</span>
+                  <span class="font-cell-sub">预览当前编辑效果，保存后应用</span>
                 </div>
               </div>
               <label class="ios-switch">
-                <input type="checkbox" id="font-preview-toggle">
+                <input type="checkbox" id="font-preview-toggle" aria-label="显示字体预览" aria-controls="font-preview-container">
                 <span class="ios-switch-slider"></span>
               </label>
             </div>
             <div id="font-preview-container" class="font-preview-collapsible" style="display: none;">
               <div class="font-preview-stage">
                 <div id="font-preview">
+                  <div class="font-preview-sample-title">文字效果</div>
                   <div class="preview-bubbles wechat-style-bubbles">
                     <div class="preview-msg-wrap preview-msg-left">
                       <div class="preview-msg ai">有些仿生人看起来很漂亮；她发现自己会被他们吸引。</div>
@@ -456,10 +457,17 @@
                       <div class="preview-msg user">理智上明知道他们是机器，情感上却还是会作出反应。</div>
                     </div>
                   </div>
+                  <div class="font-preview-sample">你好世界 Hello World · 0123456789<br>标点：，。！？“” Aa Bb Cc</div>
+                  <span class="font-preview-button-sample">按钮文字预览</span>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="font-ios-group-footer font-load-status-row">
+          <span id="font-load-status" role="status" aria-live="polite">修改后点击保存并应用。</span>
+          <button type="button" id="font-reload-btn" class="font-reset-pill-btn">重新加载</button>
         </div>
 
         <!-- 字级调节分组 -->
@@ -481,7 +489,7 @@
               </div>
             </div>
           </div>
-          <div class="font-ios-group-footer">拖动滑块调节全局及各应用模块的默认文字缩放比例。</div>
+          <div class="font-ios-group-footer">调节所选区域的默认文字比例；独立聊天字号及自定义 CSS 保持优先。</div>
         </div>
 
         <!-- 预设管理分组 -->
@@ -509,6 +517,18 @@
         <div class="font-ios-group">
           <div class="font-ios-group-title">自定义字体源</div>
           <div class="font-ios-group-card">
+
+            <div class="font-ios-cell font-source-cell">
+              <span class="font-cell-main">当前来源</span>
+              <div class="font-select-wrapper">
+                <select id="font-source-select" aria-label="当前字体来源">
+                  <option value="default">默认字体</option>
+                  <option value="url">网络字体</option>
+                  <option value="local">本地字体</option>
+                </select>
+                <span class="font-select-arrow">⌄</span>
+              </div>
+            </div>
 
             <!-- 网络字体链接 -->
             <div class="font-input-box">
@@ -549,12 +569,12 @@
             </div>
 
           </div>
-          <div class="font-ios-group-footer">推荐优先使用网络 CDN 字体链接，加载更为迅速且不占用本地储存。</div>
+          <div class="font-ios-group-footer">请使用字体文件直接链接；网络或跨域受限时可上传本地文件。中文未变化时请检查字体是否包含中文字形。</div>
         </div>
 
         <!-- 字体应用范围分组 -->
         <div class="font-ios-group">
-          <div class="font-ios-group-title">字体应用范围</div>
+          <div class="font-ios-group-title">字体与字号应用范围</div>
           <div class="font-ios-group-card font-scope-container">
 
             <!-- 全部应用主开关 -->
@@ -646,6 +666,12 @@
                   <span class="font-cell-main">设置页面</span>
                 </div>
                 <input type="checkbox" class="font-scope-real-cb" data-scope="settings" checked>
+                <div class="font-scope-checkbox-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+              </label>
+
+              <label class="font-ios-cell clickable font-scope-item">
+                <div class="font-cell-left"><span class="font-cell-main">其他应用</span></div>
+                <input type="checkbox" class="font-scope-real-cb" data-scope="other" checked>
                 <div class="font-scope-checkbox-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
               </label>
 
@@ -1035,6 +1061,7 @@
         </svg>
     </button>
     <span id="call-timer">00:00</span> 
+    <button id="video-model-communication-btn" type="button" class="mc-call-link" title="和模型聊聊">模型沟通</button>
 </div>
 
       <!-- 视频画面显示区 (优化模式) -->

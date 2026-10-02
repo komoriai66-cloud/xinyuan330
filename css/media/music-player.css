@@ -1,3 +1,100 @@
+/* 一起听内的多人同步设置；不改变播放器原有尺寸。 */
+#music-sync-btn {
+    flex-shrink: 0;
+    max-width: 70px;
+    padding: 4px 6px;
+    border: 1px solid rgba(127, 127, 127, 0.25);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: nowrap;
+    cursor: pointer;
+}
+#music-sync-btn.active {
+    color: var(--accent-color, #007aff);
+    border-color: currentColor;
+}
+#music-sync-modal { z-index: 210 !important; }
+#music-sync-modal .music-sync-content {
+    width: calc(100% - 32px);
+    max-width: 320px;
+    max-height: 80%;
+    color: var(--text-color, #222);
+    background: var(--primary-bg, #fff);
+    font-size: 13px;
+    overflow: hidden;
+}
+#music-sync-modal [hidden] { display: none !important; }
+#music-sync-modal .modal-header { justify-content: center; font-size: 14px; }
+#music-sync-modal .modal-body { min-height: 0; }
+.music-sync-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.music-sync-description {
+    margin: 10px 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary, #777);
+}
+.music-sync-selection-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    white-space: nowrap;
+}
+#music-sync-count { flex: 1; min-width: 0; color: var(--text-secondary, #777); font-size: 12px; }
+.music-sync-selection-actions button {
+    border: 0;
+    border-radius: 6px;
+    padding: 5px 7px;
+    background: rgba(127, 127, 127, 0.1);
+    color: var(--accent-color, #007aff);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+#music-sync-role-list { max-height: 32vh; overflow-y: auto; }
+.music-sync-role {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-color, #eee);
+    cursor: pointer;
+}
+.music-sync-role img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.music-sync-role span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-sync-role input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin: 0;
+    border: 1px solid var(--border-color, #aaa);
+    border-radius: 5px;
+    background: var(--primary-bg, #fff);
+    display: grid;
+    place-content: center;
+}
+.music-sync-role input:checked { background: var(--accent-color, #007aff); border-color: var(--accent-color, #007aff); }
+.music-sync-role input:checked::after { content: '✓'; color: #fff; font-size: 13px; line-height: 1; }
+#music-sync-modal .toggle-switch:focus-within .slider,
+.music-sync-role input:focus-visible { outline: 2px solid var(--accent-color, #007aff); outline-offset: 2px; }
+#music-sync-status { color: var(--text-secondary, #777); font-size: 12px; line-height: 1.5; }
+#music-sync-status:not(:empty) { margin-top: 8px; }
+#music-sync-modal .modal-footer { gap: 10px; padding: 12px 15px; }
+#music-sync-modal .modal-footer button { flex: 1; width: auto; min-width: 0; font-size: 13px; padding: 8px; }
+#music-sync-modal .modal-footer .cancel { background: var(--primary-bg, #fff); }
+#music-sync-modal button:disabled { opacity: 0.5; cursor: default; }
+
            /* 歌单分组标签栏 */
            .playlist-tabs-container {
                display: flex;

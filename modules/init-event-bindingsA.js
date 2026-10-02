@@ -1088,9 +1088,8 @@ window.initEventBindingsA = async function(state, db) {
 
 
 
-    if (state.globalSettings && (state.globalSettings.fontUrl || (state.globalSettings.globalFontSize && state.globalSettings.globalFontSize !== 16))) {
-      applyCustomFont(state.globalSettings.fontUrl || '');
-    }
+    // 完整恢复字体设置，包含本地字体、默认字号和区域范围。
+    if (state.globalSettings) void applyCustomFont(state.globalSettings.fontUrl || '');
 
     updateClock();
     if (window._clockTimer) clearInterval(window._clockTimer);
@@ -1657,6 +1656,7 @@ window.initEventBindingsA = async function(state, db) {
     document.getElementById('transfer-confirm-btn').addEventListener('click', sendUserTransfer);
 
     document.getElementById('listen-together-btn').addEventListener('click', handleListenTogetherClick);
+    document.getElementById('music-sync-btn')?.addEventListener('click', openMusicSyncSettings);
     document.getElementById('music-exit-btn').addEventListener('click', () => endListenTogetherSession(true));
     document.getElementById('music-return-btn').addEventListener('click', returnToChat);
     document.getElementById('music-play-pause-btn').addEventListener('click', togglePlayPause);
@@ -1752,16 +1752,19 @@ window.initEventBindingsA = async function(state, db) {
       // 4. 手动添加一条“自动换歌”的系统提示
       const track = musicState.playlist[musicState.currentIndex];
       if (track && musicState.isActive && musicState.activeChatId) {
-        const chat = state.chats[musicState.activeChatId];
-        if (chat) {
-          const systemMessage = {
-            role: 'system',
-            content: `[系统提示：上一首歌曲播放完毕，已自动为你切换到《${track.name}》 - ${track.artist}]`,
-            timestamp: Date.now(),
-            isHidden: true // 这条消息用户看不见，但AI在下次回复时会读到
-          };
-          chat.history.push(systemMessage);
-          await db.chats.put(chat); // 异步保存到数据库
+        const chatIds = musicState.multiSyncEnabled ? musicState.syncedChatIds : [musicState.activeChatId];
+        for (const chatId of [...new Set(chatIds || [])]) {
+          const chat = state.chats[chatId];
+          if (chat) {
+            const systemMessage = {
+              role: 'system',
+              content: `[系统提示：上一首歌曲播放完毕，已自动为你切换到《${track.name}》 - ${track.artist}]`,
+              timestamp: Date.now(),
+              isHidden: true // 这条消息用户看不见，但AI在下次回复时会读到
+            };
+            chat.history.push(systemMessage);
+            await db.chats.put(chat); // 异步保存到数据库
+          }
         }
       }
     });
@@ -1831,7 +1834,7 @@ window.initEventBindingsA = async function(state, db) {
       cancelReplyMode();
       document.body.classList.remove('chat-actions-expanded');
     });
-    document.getElementById('wait-reply-btn').addEventListener('click', triggerAiResponse);
+    document.getElementById('wait-reply-btn').addEventListener('click', () => triggerAiResponse({ manual: true }));
     chatInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -2272,6 +2275,7 @@ window.initEventBindingsA = async function(state, db) {
       // 优先使用手写输入框的值，如果为空则使用下拉框的值
       const modelInput = document.getElementById('model-input').value.trim();
       nextApiConfig.model = modelInput || document.getElementById('model-select').value;
+      Object.assign(nextApiConfig, window.ttsSettings.readApi());
       nextApiConfig.minimaxGroupId = document.getElementById('minimax-group-id').value.trim();
       nextApiConfig.minimaxApiKey = document.getElementById('minimax-api-key').value.trim();
       nextApiConfig.minimaxModel = document.getElementById('minimax-model-select').value;
@@ -3072,7 +3076,7 @@ window.initEventBindingsA = async function(state, db) {
         const transcriptEl = bubble ? bubble.querySelector('.voice-transcript') : null;
 
 
-        if (voiceBody.dataset.voiceId && transcriptEl && transcriptEl.style.display === 'block') {
+        if ((voiceBody.dataset.voiceId || voiceBody.dataset.ttsProvider === 'elevenlabs') && transcriptEl && transcriptEl.style.display === 'block') {
 
 
           if (chat.isGroup) {
@@ -3354,6 +3358,7 @@ window.initEventBindingsA = async function(state, db) {
       if (!state.activeChatId) return;
       const chat = state.chats[state.activeChatId];
       const isGroup = chat.isGroup;
+      window.ttsSettings.loadChat(chat);
       if (window.CharacterBond) window.CharacterBond.loadSettingsUi(chat);
       const mcpEditor = document.getElementById('chat-mcp-permission-editor');
       const groupMcpNote = document.getElementById('group-mcp-permission-note');
@@ -3494,6 +3499,7 @@ window.initEventBindingsA = async function(state, db) {
       timePerceptionToggle.checked = chat.settings.enableTimePerception;
       timeZoneGroup.style.display = timePerceptionToggle.checked ? 'block' : 'none';
       if (window.TimeAwareness) window.TimeAwareness.loadSettingsUi(chat);
+      window.MemoryWorldTimeUI?.mount(chat);
 
 
       const timezoneSelect = document.getElementById('time-zone-select');
@@ -3704,7 +3710,7 @@ window.initEventBindingsA = async function(state, db) {
         document.getElementById('enable-sticker-smart-match-checkbox').checked = chat.settings.enableStickerSmartMatch || false;
 
         document.getElementById('ai-original-name-input').value = chat.originalName;
-        document.getElementById('ai-voice-id-input').value = chat.settings.minimaxVoiceId || '';
+        // TTS fields are loaded for both single and group settings above.
 
         document.getElementById('ai-voice-lang-group').style.display = isGroup ? 'none' : 'block';
         document.getElementById('ai-voice-lang-select').value = chat.settings.ttsLanguage || '';
@@ -4320,6 +4326,10 @@ window.initEventBindingsA = async function(state, db) {
     document.getElementById('save-chat-settings-btn').addEventListener('click', async () => {
       if (!state.activeChatId) return;
       const chat = state.chats[state.activeChatId];
+      if (!chat.isGroup) {
+        try { window.ttsSettings.validateChat(); }
+        catch (error) { await showCustomAlert('语音设置未完成', String(error.message).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])); return; }
+      }
       const shouldOpenPetSetup = !chat.isGroup
         && !chat.settings.enableSharedPet
         && document.getElementById('shared-pet-switch').checked
@@ -4345,11 +4355,8 @@ window.initEventBindingsA = async function(state, db) {
           document.getElementById('shared-pet-switch').checked
         );
       }
-      if (!chat.isGroup && newName !== chat.name) {
-        if (!chat.nameHistory) chat.nameHistory = [];
-        if (!chat.nameHistory.includes(chat.name)) chat.nameHistory.push(chat.name);
-      }
-      chat.name = newName;
+      const remarkChangeMessage = chat.isGroup ? null : window.RemarkNames.recordChange(chat, newName, 'user');
+      if (chat.isGroup) chat.name = newName;
 
       // 保存角色国籍
       const selectedCountry = document.getElementById('character-country-select').value;
@@ -4595,7 +4602,7 @@ window.initEventBindingsA = async function(state, db) {
             day: isNaN(bDay) ? null : bDay
         };
         
-        chat.settings.minimaxVoiceId = document.getElementById('ai-voice-id-input').value.trim();
+        window.ttsSettings.saveChat(chat);
 
         chat.settings.ttsLanguage = document.getElementById('ai-voice-lang-select').value;
         chat.settings.showSeconds = document.getElementById('chat-show-seconds-switch').checked;
@@ -4630,6 +4637,7 @@ window.initEventBindingsA = async function(state, db) {
       }
 
       await db.chats.put(chat);
+      if (remarkChangeMessage) appendMessage(remarkChangeMessage, chat);
       if (!chat.isGroup) {
         await syncCharacterNameInGroups(chat);
         await syncCharacterAvatarInGroups(chat);

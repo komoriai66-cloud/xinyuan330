@@ -1,7 +1,13 @@
-  async function triggerAiResponse() {
-    if (!state.activeChatId) return;
-    const chatId = state.activeChatId;
-    const chat = state.chats[state.activeChatId];
+  async function triggerAiResponse(options = {}) {
+    const chatId = options.chatId || state.activeChatId;
+    if (!chatId) return;
+    const chat = options.previewChat || state.chats[chatId];
+    if (!chat) return;
+    const isPreview = options.preview === true;
+    let generationGuidance = null;
+    if (!isPreview && window.GenerationAdjustments) {
+      if (window.GenerationAdjustments.isBusy(chatId)) return;
+    }
     let replyGuardianTaskId = null;
     let replyGuardianTaskSettled = false;
     async function safelyUpdateReplyGuardian(operation) {
@@ -21,20 +27,22 @@
         thoughtChainContextMiddle = chunks.middle.map(c => c.content).join('\n');
     }
 
-    let isViewingThisChat = document.getElementById('chat-interface-screen').classList.contains('active') && state.activeChatId === chatId;
+    let isViewingThisChat = !isPreview && document.getElementById('chat-interface-screen').classList.contains('active') && state.activeChatId === chatId;
 
-    setAvatarActingState(chatId, true);
+    if (!isPreview) setAvatarActingState(chatId, true);
     const chatHeaderTitle = document.getElementById('chat-header-title');
     const typingIndicator = document.getElementById('typing-indicator');
     const stopBtn = document.getElementById('stop-api-call-btn');
 
     const chatListItem = document.querySelector(`.chat-list-item[data-chat-id="${chatId}"]`);
     const avatarInList = chatListItem ? chatListItem.querySelector('.avatar') : null;
-    if (avatarInList) {
+    if (!isPreview && avatarInList) {
       avatarInList.classList.add('is-acting');
     }
 
-    if (chat.isGroup) {
+    if (isPreview) {
+      // 候选只在独立面板预览，不改变角色输入状态。
+    } else if (chat.isGroup) {
       if (typingIndicator) {
         typingIndicator.textContent = '成员们正在输入...';
         typingIndicator.style.display = 'block';
@@ -51,6 +59,7 @@
     }
     let needsImmediateReaction = false;
     try {
+      if (!isPreview && window.GenerationAdjustments) window.GenerationAdjustments.begin(chatId);
       // 获取API配置（优先使用角色独立配置）
       let apiConfig = state.apiConfig;
       if (chat.apiOverride && chat.apiOverride.enabled) {
@@ -67,7 +76,8 @@
         model
       } = apiConfig;
       
-      if (!proxyUrl || !apiKey || !model) {
+      if ((!proxyUrl || !apiKey || !model) && !options.candidateContent) {
+        if (isPreview) throw new Error('请先配置 API 地址、密钥和模型。');
         alert('请先在API设置中配置反代地址、密钥并选择模型。');
         if (chat.isGroup) {
           if (typingIndicator) typingIndicator.style.display = 'none';
@@ -84,7 +94,7 @@
       const isVideoCallRequest = lastMessage && lastMessage.role === 'system' && lastMessage.content.includes('视频通话请求');
       const isVoiceCallRequest = lastMessage && lastMessage.role === 'system' && lastMessage.content.includes('语音通话请求');
 
-      if (isVideoCallRequest) {
+      if (isVideoCallRequest && !isPreview && !options.candidateContent) {
         console.log(`检测到视频通话请求，为角色 "${chat.name}" 触发专属决策流程...`);
 
         let callDecisionPrompt;
@@ -230,7 +240,7 @@
         }
       }
 
-      if (isVoiceCallRequest) {
+      if (isVoiceCallRequest && !isPreview && !options.candidateContent) {
         console.log(`检测到语音通话请求，为角色 "${chat.name}" 触发专属决策流程...`);
 
         let callDecisionPrompt;
@@ -429,7 +439,7 @@
 
 
 
-      if (!chat.isGroup && chat.relationship?.status === 'pending_ai_approval') {
+      if (!isPreview && !options.candidateContent && !chat.isGroup && chat.relationship?.status === 'pending_ai_approval') {
         console.log(`为角色 "${chat.name}" 触发带理由的好友申请决策流程...`);
         const contextSummary = chat.history
           .filter(m => !m.isHidden)
@@ -547,7 +557,7 @@
 
       // 判断是否使用自定义时间
       let currentTime, localizedDate, timeOfDayGreeting;
-      const customTimeInfo = window.getCustomTime ? window.getCustomTime() : null;
+      const customTimeInfo = window.getCustomTime ? window.getCustomTime(chat) : null;
       const customTimeEnabled = customTimeInfo && customTimeInfo.enabled;
       
       if (customTimeEnabled) {
@@ -640,7 +650,7 @@ ${linkedContents}
 
 
       let musicContext = '';
-      if (musicState.isActive && musicState.activeChatId === chatId) {
+      if (window.isMusicAwareChat ? window.isMusicAwareChat(chatId) : (musicState.isActive && musicState.activeChatId === chatId)) {
         const currentTrack = musicState.currentIndex > -1 ? musicState.playlist[musicState.currentIndex] : null;
         const playlistInfo = musicState.playlist.map(t => `"${t.name}"`).join(', ');
 
@@ -666,7 +676,7 @@ ${linkedContents}
         -   **正在播放**: ${currentTrack ? `《${currentTrack.name}》 - ${currentTrack.artist}` : '无'}
         -   **可用播放列表**: [${playlistInfo}]
         ${lyricsContext}
-        ${chat.settings.enableMusicTimeAwareness ? `-   **累计一起听歌时长**: 你们历史以来已经累计一起听了 ${(musicState.totalElapsedTime / 3600).toFixed(1)} 小时的歌` : ''}
+        ${chat.settings.enableMusicTimeAwareness ? `-   **累计一起听歌时长**: 你们历史以来已经累计一起听了 ${((window.getMusicElapsedTime ? window.getMusicElapsedTime(chatId) : musicState.totalElapsedTime) / 3600).toFixed(1)} 小时的歌` : ''}
         -   **你的任务**: 你可以根据对话内容和氛围，使用 "change_music" 指令切换到播放列表中的任何一首歌，以增强互动体验。
         `;
       }
@@ -852,7 +862,7 @@ ${linkedContents}
             } else if (memMode === 'structured' && window.structuredMemoryManager) {
               memberMemContent = window.structuredMemoryManager.serializeForPrompt(memberChat);
             } else if (memberChat.longTermMemory && memberChat.longTermMemory.length > 0) {
-              memberMemContent = memberChat.longTermMemory.map(mem => `- (记录于 ${formatTimeAgo(mem.timestamp)}) ${mem.content}`).join('\n');
+              memberMemContent = getMemoryContextForPrompt(memberChat, { includeTimestamp: true });
             }
 
             if (memberMemContent && memberMemContent.trim() !== '') {
@@ -1070,7 +1080,7 @@ ${linkedContents}
           const memMode = chat.settings?.memoryMode || (chat.settings?.enableStructuredMemory ? 'structured' : 'diary');
           if (memMode === 'vector' && window.vectorMemoryManager) return window.vectorMemoryManager.serializeForPromptSync(chat);
           if (memMode === 'structured' && window.structuredMemoryManager) return window.structuredMemoryManager.serializeForPrompt(chat);
-          return chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
+          return getMemoryContextForPrompt(chat);
         })();
         
         let novelAiImageGroupContext = localStorage.getItem('novelai-enabled') === 'true' ? `-   **NovelAI图片分享**: \`{"type": "naiimag", "name": "你的角色名", "prompt": "详细的英文描述词..."}\` 
@@ -1155,6 +1165,7 @@ ${linkedContents}
         systemPrompt = processPromptWithSettings(systemPrompt, chat.settings.isOfflineMode ? 'group_offline' : 'group');
 
         messagesPayload = filteredHistory.map(msg => {
+            if (window.RemarkNames.getEvent(msg, chat)) return null;
           // 处理系统消息（旁白和系统通知）
           if (msg.role === 'system' && !msg.isHidden) {
             if (msg.type === 'narration') {
@@ -1474,7 +1485,7 @@ ${enabledEntries}
           } else if (memModeOffline === 'structured' && window.structuredMemoryManager) {
             longTermMemoryContextOffline = window.structuredMemoryManager.serializeForPrompt(chat);
           } else {
-            longTermMemoryContextOffline = chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
+            longTermMemoryContextOffline = getMemoryContextForPrompt(chat);
           }
           
           let aiAgeContext = getDynamicAgeContext(chat);
@@ -1538,6 +1549,7 @@ ${enabledEntries}
           systemPrompt = processPromptWithSettings(systemPrompt, 'offline');
           
           messagesPayload = filteredHistory.map(msg => {
+            if (window.RemarkNames.getEvent(msg, chat)) return null;
             if (msg.isHidden) return null;
 
 
@@ -2391,6 +2403,7 @@ ${getActiveThoughtsPrompt()}
           systemPrompt = processPromptWithSettings(systemPrompt, 'single');
 
           messagesPayload = filteredHistory.map(msg => {
+            if (window.RemarkNames.getEvent(msg, chat)) return null;
             // 处理系统消息（旁白和系统通知）
             if (msg.role === 'system' && !msg.isHidden) {
               if (msg.type === 'narration') {
@@ -2591,9 +2604,12 @@ ${getActiveThoughtsPrompt()}
         }
       }
 
+      // 在自定义提示词处理完成后注入运行时事实，线上/线下模式都保留来源。
+      systemPrompt += window.RemarkNames.buildContext(chat, filteredHistory);
+
       // ========== 识图API预处理 ==========
       // 如果配置了独立的识图API，先用识图API识别图片，再把描述文本替代图片发给主API
-      const hasVisionApi = state.apiConfig.visionProxyUrl && state.apiConfig.visionApiKey && state.apiConfig.visionModel;
+      const hasVisionApi = !options.candidateContent && state.apiConfig.visionProxyUrl && state.apiConfig.visionApiKey && state.apiConfig.visionModel;
       if (hasVisionApi) {
         for (let i = 0; i < messagesPayload.length; i++) {
           const msg = messagesPayload[i];
@@ -2644,21 +2660,26 @@ ${getActiveThoughtsPrompt()}
           messagesPayload = ThoughtChainManager.injectIntoMessages(messagesPayload);
       }
 
+      if (window.GenerationAdjustments && !options.candidateContent) {
+        generationGuidance = await window.GenerationAdjustments.prepare(chat, options);
+        systemPrompt += generationGuidance.block;
+      }
       let isGemini = proxyUrl === GEMINI_API_URL;
-      let geminiConfig = toGeminiRequestData(model, apiKey, systemPrompt, messagesPayload)
+      let geminiConfig = options.candidateContent ? null : toGeminiRequestData(model, apiKey, systemPrompt, messagesPayload)
 
       // 创建新的 AbortController
-      currentApiController = new AbortController();
+      const requestController = isPreview ? { signal: options.signal } : new AbortController();
+      if (!isPreview) currentApiController = requestController;
 
       // 显示暂停调用按钮
-      if (stopBtn) {
+      if (!isPreview && stopBtn) {
         stopBtn.style.display = 'flex';
         stopBtn.classList.add('active');
       }
       const latestMcpUserMessage = [...(chat.history || [])].reverse().find(message =>
         message && message.role === 'user' && !message.isHidden
       );
-      const availableMcpTools = window.McpChatOrchestrator
+      const availableMcpTools = !isPreview && !options.candidateContent && window.McpChatOrchestrator
         ? window.McpChatOrchestrator.createCatalog(chat, latestMcpUserMessage)
         : [];
       // 工具调用包含结构化增量；当前聊天流解析器只处理文本，所以 MCP 回合使用非流式请求。
@@ -2671,7 +2692,7 @@ ${getActiveThoughtsPrompt()}
         chatId: chatId,
         chatName: chat.name,
         model: model,
-        requestSource: 'chat',
+        requestSource: isPreview ? 'generation_candidate' : options.candidateContent ? 'generation_candidate_adopted' : 'chat',
         provider: isGemini ? 'gemini' : 'openai-compatible',
         systemPrompt: systemPrompt,
         messages: isGemini ? messagesPayload : [{
@@ -2700,7 +2721,7 @@ ${getActiveThoughtsPrompt()}
       };
 
       // 回复守护只保存恢复所需元数据，不保存 API Key 或完整提示词。
-      if (window.ReplyTaskStore && (!window.ReplyGuardian || window.ReplyGuardian.settings().enabled)) {
+      if (!isPreview && !options.candidateContent && window.ReplyTaskStore && (!window.ReplyGuardian || window.ReplyGuardian.settings().enabled)) {
         try {
           const latestUserMessage = [...(chat.history || [])].reverse().find(message =>
             message && message.role === 'user' && !message.isHidden
@@ -2842,7 +2863,11 @@ ${getActiveThoughtsPrompt()}
         };
       }
 
-      if (availableMcpTools.length && window.McpChatOrchestrator) {
+      if (options.candidateContent) {
+        aiResponseContent = options.candidateContent;
+        response = { status: 200, statusText: 'Adopted candidate' };
+        responsePayload = { adoptedCandidate: true };
+      } else if (availableMcpTools.length && window.McpChatOrchestrator) {
         aiResponseContent = await window.McpChatOrchestrator.run({
           chat,
           messages: messagesPayload,
@@ -2867,7 +2892,7 @@ ${getActiveThoughtsPrompt()}
           response = isGemini ?
             await fetch(geminiConfig.url, {
               ...geminiConfig.data,
-              signal: currentApiController.signal
+              signal: requestController.signal
             }) :
             await fetch(`${proxyUrl}/v1/chat/completions`, {
               method: 'POST',
@@ -2876,7 +2901,7 @@ ${getActiveThoughtsPrompt()}
                 'Authorization': `Bearer ${apiKey}`
               },
               body: JSON.stringify(reqBody),
-              signal: currentApiController.signal
+              signal: requestController.signal
             });
         } catch (networkError) {
           if (networkError.name === 'AbortError') throw networkError;
@@ -2894,6 +2919,8 @@ ${getActiveThoughtsPrompt()}
           responsePayload = data;
         }
       }
+
+      if (isPreview) return aiResponseContent;
 
       if (replyGuardianTaskId && window.ReplyTaskStore) {
         window.ReplyTaskStore.setStage(replyGuardianTaskId, 'receiving', '正在接收回复').catch(() => {});
@@ -3898,41 +3925,13 @@ ${getActiveThoughtsPrompt()}
             }
             continue;
           case 'change_remark_name':
-            if (!chat.isGroup && msgData.new_name) {
-              const oldName = chat.name;
-              const newName = msgData.new_name.trim();
-
-              if (newName && newName !== oldName) {
-                if (!chat.nameHistory) {
-                  chat.nameHistory = [];
-                }
-                if (!chat.nameHistory.includes(oldName)) {
-                  chat.nameHistory.push(oldName);
-                }
-
-                chat.name = newName;
-
-                const systemMessage = {
-                  role: 'system',
-                  type: 'pat_message',
-                  content: `“${chat.originalName}” 将备注修改为 “${newName}”`,
-                  timestamp: messageTimestamp++
-                };
-                chat.history.push(systemMessage);
-
-                const hiddenMemoryMessage = {
-                  role: 'system',
-                  content: `[系统提示：你刚刚成功将自己的备注名修改为了“${newName}”。请自然地接受这个新名字，不要对此感到惊讶。]`,
-                  timestamp: messageTimestamp++,
-                  isHidden: true
-                };
-                chat.history.push(hiddenMemoryMessage);
-
+            if (!chat.isGroup && typeof msgData.new_name === 'string') {
+              const systemMessage = window.RemarkNames.recordChange(chat, msgData.new_name, 'character', messageTimestamp++);
+              if (systemMessage) {
                 if (isViewingThisChat) {
                   appendMessage(systemMessage, chat);
-                  document.getElementById('chat-header-title').textContent = newName;
+                  document.getElementById('chat-header-title').textContent = chat.name;
                 }
-
                 await syncCharacterNameInGroups(chat);
               }
             }
@@ -4591,7 +4590,7 @@ ${getActiveThoughtsPrompt()}
             };
             break;
           case 'change_music':
-            if (musicState.isActive && musicState.activeChatId === chatId) {
+            if (window.isMusicAwareChat ? window.isMusicAwareChat(chatId) : (musicState.isActive && musicState.activeChatId === chatId)) {
               const songNameFromAI = msgData.song_name || msgData.song || msgData.name;
 
               if (typeof songNameFromAI === 'string' && songNameFromAI.trim()) {
@@ -4599,7 +4598,7 @@ ${getActiveThoughtsPrompt()}
                 const targetSongIndex = musicState.playlist.findIndex(track => track.name.toLowerCase() === songNameToFind.toLowerCase());
 
                 if (targetSongIndex > -1) {
-                  playSong(targetSongIndex);
+                  playSong(targetSongIndex, false, musicState.multiSyncEnabled ? 'character' : 'user');
                   const track = musicState.playlist[targetSongIndex];
 
                   let changerName;
@@ -4987,41 +4986,13 @@ ${getActiveThoughtsPrompt()}
             }
             continue;
           case 'change_remark_name':
-            if (!chat.isGroup && msgData.new_name) {
-              const oldName = chat.name;
-              const newName = msgData.new_name.trim();
-
-              if (newName && newName !== oldName) {
-                if (!chat.nameHistory) {
-                  chat.nameHistory = [];
-                }
-                if (!chat.nameHistory.includes(oldName)) {
-                  chat.nameHistory.push(oldName);
-                }
-
-                chat.name = newName;
-
-                const systemMessage = {
-                  role: 'system',
-                  type: 'pat_message',
-                  content: `“${chat.originalName}” 将备注修改为 “${newName}”`,
-                  timestamp: messageTimestamp++
-                };
-                chat.history.push(systemMessage);
-
-                const hiddenMemoryMessage = {
-                  role: 'system',
-                  content: `[系统提示：你刚刚成功将自己的备注名修改为了“${newName}”。请自然地接受这个新名字，不要对此感到惊讶。]`,
-                  timestamp: messageTimestamp++,
-                  isHidden: true
-                };
-                chat.history.push(hiddenMemoryMessage);
-
+            if (!chat.isGroup && typeof msgData.new_name === 'string') {
+              const systemMessage = window.RemarkNames.recordChange(chat, msgData.new_name, 'character', messageTimestamp++);
+              if (systemMessage) {
                 if (isViewingThisChat) {
                   appendMessage(systemMessage, chat);
-                  document.getElementById('chat-header-title').textContent = newName;
+                  document.getElementById('chat-header-title').textContent = chat.name;
                 }
-
                 await syncCharacterNameInGroups(chat);
               }
             }
@@ -5784,10 +5755,13 @@ ${getActiveThoughtsPrompt()}
           );
           replyGuardianTaskSettled = !!completedTask;
         }
-        await triggerAiResponse();
+        if (window.GenerationAdjustments) window.GenerationAdjustments.end(chatId);
+        await triggerAiResponse({ chatId });
         return;
       }
       await db.chats.put(chat);
+      if (window.GenerationAdjustments) await window.GenerationAdjustments.consume(generationGuidance);
+      if (options.onCommitted) options.onCommitted();
       if (replyGuardianTaskId && window.ReplyTaskStore) {
         const completedTask = await safelyUpdateReplyGuardian(() =>
           window.ReplyTaskStore.complete(replyGuardianTaskId, { messageCount: messagesArray.length })
@@ -5811,6 +5785,7 @@ ${getActiveThoughtsPrompt()}
 
 
     } catch (error) {
+      if (isPreview || options.candidateContent) throw error;
 
       if (replyGuardianTaskId && window.ReplyTaskStore) {
         // 即使持久化失败状态本身失败，也不能在 finally 中把真实失败误记为完成。
@@ -5846,6 +5821,8 @@ ${getActiveThoughtsPrompt()}
 
       videoCallState.isAwaitingResponse = false;
     } finally {
+      if (!isPreview) {
+      if (window.GenerationAdjustments) window.GenerationAdjustments.end(chatId);
       // 某些合法的指令处理分支会提前 return；只要未进入错误分支，就将已有响应记为完成。
       if (replyGuardianTaskId && !replyGuardianTaskSettled && window.ReplyTaskStore) {
         try {
@@ -5887,6 +5864,7 @@ ${getActiveThoughtsPrompt()}
         try { triggerCoupleSpaceAiDecide(chatId, 'chat'); } catch(e) {}
       }
       stopSilentAudio();
+      }
     }
   }
 

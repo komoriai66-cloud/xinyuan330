@@ -15,6 +15,7 @@
   let isRuleManagementMode = false;
   let selectedRules = new Set();
   let editingRuleId = null;
+  let editingRuleRecord = null;
   let ruleCache = {};
   const renderingResultCache = new Map();
   const MAX_RENDERING_RESULT_CACHE = 300;
@@ -22,6 +23,7 @@
   function resetRenderingRuleCache() {
     ruleCache = {};
     renderingResultCache.clear();
+    window.RenderingRuleRuntime?.clear();
     window.ruleCache = ruleCache;
   }
 
@@ -62,7 +64,8 @@
     tabsContainer.innerHTML = '';
     contentContainer.innerHTML = '';
 
-    const allRules = await db.renderingRules.toArray();
+    const allRules = (await db.renderingRules.toArray()).map((rule, index) => ({ rule, index })).sort((a, b) => (a.rule.executionOrder ?? a.rule.options?.order ?? a.index) - (b.rule.executionOrder ?? b.rule.options?.order ?? b.index)).map(item => item.rule);
+    window.RenderingRuleWorkbench?.updateList(allRules);
 
     if (allRules.length === 0) {
       tabsContainer.style.display = 'none';
@@ -136,6 +139,7 @@
         <div class="card-title">${rule.name}</div>
         <div class="card-content-preview">${escapeHTML(rule.regex)}</div>
     `;
+    window.RenderingRuleWorkbench?.decorateCard(card, rule);
 
     card.addEventListener('click', (e) => {
       if (e.target.classList.contains('rule-select-checkbox')) {
@@ -314,6 +318,8 @@
       version: 1,
       timestamp: Date.now(),
       rules: rules.map(r => ({
+        ...r,
+        id: undefined,
         name: r.name,
         regex: r.regex,
         template: r.template,
@@ -344,6 +350,10 @@
       const text = await file.text();
       const data = JSON.parse(text);
 
+      if (window.RenderingRuleWorkbench) {
+        await window.RenderingRuleWorkbench.importRules(data);
+        return;
+      }
       if (data.type !== 'EPhoneRenderingRules' || !Array.isArray(data.rules)) {
         throw new Error("文件格式不正确，不是有效的渲染规则分享文件。");
       }
@@ -391,7 +401,9 @@
     );
 
     if (confirmed) {
+      await window.RenderingRuleWorkbench?.beforeMutation();
       await db.renderingRules.bulkDelete([...selectedRules]);
+      await window.RenderingRuleWorkbench?.afterMutation();
       resetRenderingRuleCache();
       selectedRules.clear();
 
@@ -401,6 +413,7 @@
 
   async function openRuleEditor(ruleId = null) {
     editingRuleId = ruleId;
+    editingRuleRecord = null;
     const modal = document.getElementById('rule-editor-modal');
     const title = document.getElementById('rule-editor-title');
     const nameInput = document.getElementById('rule-name-input');
@@ -433,6 +446,7 @@
       title.textContent = '编辑规则';
       const rule = await db.renderingRules.get(ruleId);
       if (rule) {
+        editingRuleRecord = rule;
         currentName = rule.name;
         currentRegex = rule.regex;
         currentTemplate = rule.template;
@@ -511,6 +525,7 @@
       });
     }
 
+    window.RenderingRuleWorkbench?.openEditor(editingRuleRecord);
     modal.classList.add('visible');
   }
 
@@ -519,14 +534,19 @@
     const name = document.getElementById('rule-name-input').value.trim();
     const regex = document.getElementById('rule-regex-input').value.trim();
 
-    if (!name || !regex) {
-      alert("规则名称和正则表达式不能为空！");
+    let options;
+    try { options = window.RenderingRuleWorkbench?.readOptions(); }
+    catch (error) { await showCustomAlert('配置格式错误', error.message); return; }
+    const action = options?.action || 'replace';
+    if (!name || (!regex && !['map', 'format'].includes(action) && options?.matchMode !== 'markers')) {
+      await showCustomAlert('无法保存', '请填写规则名称和查找内容。');
       return;
     }
     try {
-      new RegExp(regex);
+      if (window.RenderingRuleEngine) window.RenderingRuleEngine.compileRule({ regex, template: document.getElementById('rule-template-input').value, options });
+      else new RegExp(regex);
     } catch (e) {
-      alert(`正则表达式格式错误: ${e.message}`);
+      await showCustomAlert('规则格式错误', e.message);
       return;
     }
 
@@ -534,24 +554,29 @@
     const selectedScope = Array.from(checkboxes).map(cb => cb.value);
 
     if (selectedScope.length === 0) {
-      alert("请至少选择一个绑定范围（公用或指定角色）！");
+      await showCustomAlert('无法保存', '请至少选择一个绑定范围。');
       return;
     }
 
     const ruleData = {
+      ...editingRuleRecord,
       name: name,
       chatId: selectedScope,
       regex: regex,
       template: document.getElementById('rule-template-input').value,
       isEnabled: document.getElementById('rule-enabled-switch').checked,
-      doNotSend: document.getElementById('rule-do-not-send-switch').checked
+      doNotSend: document.getElementById('rule-do-not-send-switch').checked,
+      ...(options ? { options, executionOrder: options.order } : {}),
+      ...(window.RenderingRuleWorkbench?.readMetadata() || {})
     };
 
+    await window.RenderingRuleWorkbench?.beforeMutation();
     if (editingRuleId) {
       await db.renderingRules.update(editingRuleId, ruleData);
     } else {
       await db.renderingRules.add(ruleData);
     }
+    await window.RenderingRuleWorkbench?.afterMutation();
 
     resetRenderingRuleCache();
 
@@ -565,7 +590,9 @@
       confirmButtonClass: 'btn-danger'
     });
     if (confirmed) {
+      await window.RenderingRuleWorkbench?.beforeMutation();
       await db.renderingRules.delete(ruleId);
+      await window.RenderingRuleWorkbench?.afterMutation();
       resetRenderingRuleCache();
       await renderRulesList();
     }
@@ -577,6 +604,18 @@
 
     // 1. 获取所有规则
     const allRules = await db.renderingRules.toArray();
+    if (window.RenderingRuleRuntime) {
+      const output = [];
+      for (const msg of history) {
+        if (typeof msg.content !== 'string' || !msg.content) { output.push(msg); continue; }
+        const result = await window.RenderingRuleRuntime.run(msg.content, allRules, chatId, {
+          role: msg.role, type: msg.type, timestamp: msg.timestamp, messageId: msg.id ?? msg.timestamp,
+          isGroup: !!state.chats[chatId]?.isGroup, field: 'content'
+        }, 'context');
+        if (!result.excluded) output.push({ ...msg, content: result.content });
+      }
+      return output;
+    }
 
     // 2. 筛选出：(启用了DoNotSend) AND (范围包含Global或当前ChatId)
     const doNotSendRules = allRules.filter(rule => {
@@ -632,7 +671,7 @@
     return modifiedHistory;
   }
 
-  async function applyRenderingRulesDetailed(rawContent, chatId) {
+  async function applyRenderingRulesDetailed(rawContent, chatId, metadata = {}) {
     if (!rawContent || typeof rawContent !== 'string') {
       return { content: rawContent, isHtml: false };
     }
@@ -642,6 +681,7 @@
       if (!cacheToPopulate.activeRulesPromise) {
         cacheToPopulate.activeRulesPromise = db.renderingRules.toArray().then(allRules => {
           cacheToPopulate.activeRules = allRules.filter(r => r.isEnabled).map(rule => {
+            if (window.RenderingRuleRuntime) return rule;
             const regexString = rule.regex || rule.findRegex;
             let compiledRegex = null;
             if (regexString) {
@@ -674,7 +714,11 @@
         });
       }
       await cacheToPopulate.activeRulesPromise;
-      if (ruleCache !== cacheToPopulate) return applyRenderingRulesDetailed(rawContent, chatId);
+      if (ruleCache !== cacheToPopulate) return applyRenderingRulesDetailed(rawContent, chatId, metadata);
+    }
+
+    if (window.RenderingRuleRuntime) {
+      return window.RenderingRuleRuntime.run(rawContent, ruleCache.activeRules, chatId, metadata);
     }
 
     const canCacheResult = rawContent.length <= 50000;
@@ -716,8 +760,8 @@
     return result;
   }
 
-  async function applyRenderingRules(rawContent, chatId) {
-    const result = await applyRenderingRulesDetailed(rawContent, chatId);
+  async function applyRenderingRules(rawContent, chatId, metadata = {}) {
+    const result = await applyRenderingRulesDetailed(rawContent, chatId, metadata);
     return result.content;
   }
 

@@ -121,11 +121,13 @@
     localStorage.setItem(CUSTOM_TIME_PAUSE_HISTORY_KEY, JSON.stringify(history.slice(-100)));
   }
 
-  function getPausedDurationBetween(start, end) {
+  function getPausedDurationBetween(start, end, chat) {
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
-    const history = loadPauseHistory();
-    if (isCustomTimePaused()) {
-      const activeStart = parseInt(localStorage.getItem(CUSTOM_TIME_PAUSED_AT_KEY), 10);
+    const ownClock = window.MemoryWorldTime?.config(chat);
+    const independent = chat && ownClock?.clockMode === 'independent';
+    const history = independent ? [...(ownClock.clock?.pauseHistory || [])] : loadPauseHistory();
+    if (independent ? ownClock.clock?.paused : isCustomTimePaused()) {
+      const activeStart = independent ? Number(ownClock.clock.pausedAt) : parseInt(localStorage.getItem(CUSTOM_TIME_PAUSED_AT_KEY), 10);
       if (Number.isFinite(activeStart)) history.push({ start: activeStart, end });
     }
     return history.reduce((total, interval) => {
@@ -157,6 +159,8 @@
     customDayInput.value = localStorage.getItem('custom-time-day') || '';
     customHourInput.value = localStorage.getItem('custom-time-hour') || '';
     customMinuteInput.value = localStorage.getItem('custom-time-minute') || '';
+    const rateInput = document.getElementById('custom-time-rate');
+    if (rateInput) rateInput.value = localStorage.getItem('custom-time-rate') ?? '1';
     
     updatePreview();
   }
@@ -202,6 +206,8 @@
 
   // 保存自定义时间设置（同时记录设定时的真实时间戳，用于时间流逝计算）
   function saveCustomTimeSettings() {
+    window.MemoryWorldTime?.flush();
+    localStorage.removeItem('custom-time-base-value');
     localStorage.setItem('custom-time-year', customYearInput.value);
     localStorage.setItem('custom-time-month', customMonthInput.value);
     localStorage.setItem('custom-time-day', customDayInput.value);
@@ -235,6 +241,7 @@
 
   // 自定义时间开关事件
   customTimeToggle.addEventListener('change', function() {
+    window.MemoryWorldTime?.flush();
     const isEnabled = this.checked;
     localStorage.setItem('custom-time-enabled', isEnabled);
     
@@ -286,11 +293,14 @@
     }
 
     if (year && month && day && hour !== null && minute !== null && anchor) {
-      const baseTime = new Date(
+      const storedBase = localStorage.getItem('custom-time-base-value');
+      const baseTime = storedBase !== null && Number.isFinite(Number(storedBase)) ? Number(storedBase) : new Date(
         parseInt(year), parseInt(month) - 1, parseInt(day),
         parseInt(hour), parseInt(minute)
       ).getTime();
-      const elapsed = Date.now() - parseInt(anchor);
+      const storedRate = Number(localStorage.getItem('custom-time-rate') ?? 1);
+      const rate = Number.isFinite(storedRate) && storedRate >= 0 ? storedRate : 1;
+      const elapsed = (Date.now() - parseInt(anchor)) * rate;
       return new Date(baseTime + elapsed);
     }
     return null;
@@ -307,6 +317,7 @@
 
   function pauseCustomTime() {
     if (localStorage.getItem('custom-time-enabled') !== 'true' || isCustomTimePaused()) return;
+    window.MemoryWorldTime?.flush();
     const current = calcElapsedCustomTime();
     if (!current) return;
     const now = Date.now();
@@ -322,6 +333,7 @@
 
   function resumeCustomTime() {
     if (!isCustomTimePaused()) return;
+    window.MemoryWorldTime?.flush();
     const now = Date.now();
     const pausedAt = parseInt(localStorage.getItem(CUSTOM_TIME_PAUSED_AT_KEY), 10);
     const pausedValue = parseInt(localStorage.getItem(CUSTOM_TIME_PAUSED_VALUE_KEY), 10);
@@ -343,6 +355,7 @@
       localStorage.setItem('custom-time-hour', String(d.getHours()));
       localStorage.setItem('custom-time-minute', String(d.getMinutes()));
       localStorage.setItem('custom-time-anchor', String(now));
+      if (localStorage.getItem('custom-time-base-value') !== null) localStorage.setItem('custom-time-base-value', String(pausedValue));
     }
     localStorage.setItem(CUSTOM_TIME_PAUSED_KEY, 'false');
     localStorage.removeItem(CUSTOM_TIME_PAUSED_AT_KEY);
@@ -356,7 +369,8 @@
   });
 
   // 获取当前时间（考虑自定义时间 + 自动流逝）
-  window.getCustomTime = function() {
+  window.getCustomTime = function(chat) {
+    if (chat && window.MemoryWorldTime?.config(chat).clockMode === 'independent') return window.MemoryWorldTime.customTime(chat);
     const customTimeEnabled = localStorage.getItem('custom-time-enabled') === 'true';
     
     if (customTimeEnabled) {
@@ -450,7 +464,7 @@
     if (mode === 'background' || mode === 'groupBackground') {
       const previousMessage = visible[visible.length - 1];
       let gapMs = Math.max(0, nowTimestamp - Number(previousMessage.timestamp));
-      if (config.pauseGapWhileWorldPaused) gapMs = Math.max(0, gapMs - getPausedDurationBetween(Number(previousMessage.timestamp), nowTimestamp));
+      if (config.pauseGapWhileWorldPaused) gapMs = Math.max(0, gapMs - getPausedDurationBetween(Number(previousMessage.timestamp), nowTimestamp, chat));
       return { firstInteraction: false, gapMs, previousMessage, currentUserMessage: null };
     }
 
@@ -485,7 +499,7 @@
     if (!previousMessage) return { firstInteraction: true, gapMs: Infinity, previousMessage: null, currentUserMessage };
     let gapMs = Math.max(0, Number(currentUserMessage.timestamp) - Number(previousMessage.timestamp));
     if (config.pauseGapWhileWorldPaused) {
-      gapMs = Math.max(0, gapMs - getPausedDurationBetween(Number(previousMessage.timestamp), Number(currentUserMessage.timestamp)));
+      gapMs = Math.max(0, gapMs - getPausedDurationBetween(Number(previousMessage.timestamp), Number(currentUserMessage.timestamp), chat));
     }
     return { firstInteraction: false, gapMs, previousMessage, currentUserMessage };
   }
@@ -504,15 +518,20 @@
         }
       : resolveInteractionGap(chat, options.history || chat.history, options.mode || 'reply', nowTimestamp, config);
 
-    const currentDate = options.localizedDate instanceof Date ? options.localizedDate : new Date(nowTimestamp);
-    const currentTime = options.currentTime || (window.getCustomTime ? window.getCustomTime().formatted : currentDate.toLocaleString('zh-CN'));
+    const activeTime = window.getCustomTime?.(chat);
+    const currentDate = options.localizedDate instanceof Date ? options.localizedDate : activeTime?.enabled ? activeTime.date : new Date(nowTimestamp);
+    const currentTime = options.currentTime || activeTime?.formatted || currentDate.toLocaleString('zh-CN');
     const period = options.timeOfDayGreeting || '';
     const gapMinutes = gap.gapMs === Infinity ? Infinity : Math.floor(gap.gapMs / 60000);
     const isReturn = !gap.firstInteraction && gapMinutes >= Math.max(0, Number(config.minGapMinutes) || 0);
-    const lastTime = gap.previousMessage?.timestamp ? new Date(Number(gap.previousMessage.timestamp)).toLocaleString('zh-CN') : '无';
+    const previousClock = gap.previousMessage?.memoryClock;
+    const previousTime = previousClock && window.MemoryWorldTime ? window.MemoryWorldTime.messageTime(gap.previousMessage) : Number(gap.previousMessage?.timestamp);
+    const lastTime = gap.previousMessage?.timestamp ? (previousClock && window.MemoryWorldTime
+      ? window.MemoryWorldTime.format(previousTime, previousClock.timeZone)
+      : new Date(previousTime).toLocaleString('zh-CN')) : '无';
     const gapText = gap.gapMs === Infinity ? '首次互动' : formatGapDuration(gap.gapMs, config.durationStyle);
     const crossedDay = gap.previousMessage?.timestamp
-      ? new Date(Number(gap.previousMessage.timestamp)).toDateString() !== currentDate.toDateString()
+      ? (previousClock && window.MemoryWorldTime ? window.MemoryWorldTime.localDate(previousTime, previousClock.timeZone) : new Date(Number(gap.previousMessage.timestamp))).toDateString() !== currentDate.toDateString()
       : false;
     const relationship = chat.relationship?.status || chat.settings.relationshipStatus || '未特别说明';
     const recentState = gap.previousMessage ? `上一条可见消息由${gap.previousMessage.role === 'user' ? '用户' : '角色'}发送` : '暂无历史互动';
@@ -762,7 +781,7 @@
       if (!output || !chat) return;
       const temporaryChat = { ...chat, settings: { ...chat.settings, enableTimePerception: true, timeAwareness: readTimeAwarenessUi() } };
       const simulatedGapMinutes = parseInt(document.getElementById('time-awareness-preview-gap')?.value, 10) || 180;
-      const result = buildTimeAwarenessContext({ chat: temporaryChat, simulatedGapMinutes, currentTime: window.getCustomTime?.().formatted });
+      const result = buildTimeAwarenessContext({ chat: temporaryChat, simulatedGapMinutes, currentTime: window.getCustomTime?.(temporaryChat).formatted });
       output.textContent = result.context || '当前配置不会注入时间感知内容。';
       output.hidden = false;
     });
@@ -833,17 +852,42 @@
     loadSettingsUi,
     saveSettingsUi,
     readSettingsUi: readTimeAwarenessUi,
-    isWorldPaused: isCustomTimePaused,
+    isWorldPaused(chat) {
+      return chat && window.MemoryWorldTime?.config(chat).clockMode === 'independent' ? window.MemoryWorldTime.clock(chat).paused : isCustomTimePaused();
+    },
+    setClockRate(rate) {
+      if (!Number.isFinite(rate) || rate < 0) throw new Error('倍率必须大于或等于 0');
+      window.MemoryWorldTime?.flush();
+      const current = calcElapsedCustomTime();
+      if (current) {
+        customYearInput.value = current.getFullYear(); customMonthInput.value = current.getMonth() + 1;
+        customDayInput.value = current.getDate(); customHourInput.value = current.getHours(); customMinuteInput.value = current.getMinutes();
+        saveCustomTimeSettings();
+        localStorage.setItem('custom-time-base-value', String(current.getTime()));
+        localStorage.setItem('custom-time-anchor', String(Date.now()));
+      }
+      localStorage.setItem('custom-time-rate', String(rate));
+      updatePreview();
+    },
     getPausedDurationBetween,
     isBackgroundPaused(chat) {
       const config = getChatTimeAwarenessConfig(chat);
-      return Boolean(config.backgroundPaused || (config.pauseBackgroundWhileWorldPaused && isCustomTimePaused()));
+      return Boolean(config.backgroundPaused || (config.pauseBackgroundWhileWorldPaused && window.TimeAwareness.isWorldPaused(chat)));
     }
   };
 
   // 页面加载时初始化
   loadSettings();
   bindTimeAwarenessUi();
+  document.getElementById('custom-time-rate-apply')?.addEventListener('click', () => {
+    try {
+      const input = document.getElementById('custom-time-rate');
+      if (!input.value.trim()) throw new Error('请填写流逝倍率');
+      window.TimeAwareness.setClockRate(Number(input.value));
+      window.MemoryWorldTimeUI?.refreshAll();
+      if (typeof window.showToast === 'function') window.showToast('世界时间倍率已应用', 'success');
+    } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message, 'error'); }
+  });
 
   console.log('时间感知与自定义时间系统已初始化');
 })();

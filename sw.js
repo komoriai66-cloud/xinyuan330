@@ -2,7 +2,7 @@
 // 【智能缓存策略】- 根据资源类型使用不同的缓存策略，优化加载速度
 
 // 缓存版本号（智能缓存策略）
-const CACHE_VERSION = 'v0.0.55-feedback-workbench';
+const CACHE_VERSION = 'v0.0.60-release-10.2';
 const CACHE_NAME = `ephone-cache-${CACHE_VERSION}`;
 const DESKTOP_FEATURE_CACHE_TO_REMOVE = 'ephone-cache-v0.0.36-pwa-install-2';
 
@@ -15,9 +15,9 @@ const CORE_URLS_TO_CACHE = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './modules/bootstrap/register-service-worker.js',
-  './modules/bootstrap/html-fragment-manifest.js?v=feedback-workbench-20260930',
+  './modules/bootstrap/html-fragment-manifest.js?v=20261002-release',
   './modules/bootstrap/document-loader.js',
-  './generated/html-fragments/document-head.js?v=feedback-workbench-20260930',
+  './generated/html-fragments/document-head.js?v=20261002-release',
   './generated/html-fragments/intro-and-home.js',
   './generated/html-fragments/health-and-couple.js',
   './generated/html-fragments/cphone.js',
@@ -28,7 +28,7 @@ const CORE_URLS_TO_CACHE = [
   './generated/html-fragments/api-settings-data.js?v=feedback-20260930-workbench',
   './generated/html-fragments/data-and-social-list.js',
   './generated/html-fragments/chat-interface.js',
-  './generated/html-fragments/appearance-and-thoughts.js',
+  './generated/html-fragments/appearance-and-thoughts.js?v=fonts-20261001',
   './generated/html-fragments/calls-and-social.js',
   './generated/html-fragments/chat-settings-main.js',
   './generated/html-fragments/chat-settings-extra.js',
@@ -92,7 +92,9 @@ self.addEventListener('fetch', event => {
   const url = event.request.url;
 
   // 排除 API 请求，让它们不受 Service Worker 干扰
-  const isApiRequest = event.request.headers.get('X-EPhone-Feedback') === '1' ||
+  const isApiRequest = event.request.headers.has('xi-api-key') ||
+                       url.includes('api.elevenlabs.io') ||
+                       event.request.headers.get('X-EPhone-Feedback') === '1' ||
                        url.includes('generativelanguage.googleapis.com') ||
                        url.includes('/v1/models') || 
                        url.includes('/v1/chat/completions') ||
@@ -150,7 +152,8 @@ self.addEventListener('fetch', event => {
   if (isImage || isFont || isCDNResource) {
     event.respondWith(
       caches.match(event.request).then(cachedResponse => {
-        if (cachedResponse) {
+        // 字体设置的显式重新加载使用 fetch(cache: 'reload')，不能仍返回旧缓存。
+        if (cachedResponse && !(event.request.cache === 'reload' && event.request.destination === '')) {
           console.log('[SW] 从缓存加载:', url);
           return cachedResponse;
         }
@@ -204,7 +207,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => null);
 
         // 如果有缓存，立即返回缓存，同时后台更新
-        if (cachedResponse) {
+        if (cachedResponse && !(event.request.cache === 'reload' && event.request.destination === '')) {
           console.log('[SW] 从缓存加载（后台更新）:', url);
           return cachedResponse;
         }

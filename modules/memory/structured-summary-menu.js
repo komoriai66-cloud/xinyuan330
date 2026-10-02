@@ -254,25 +254,7 @@ async function executeStructuredSummary(chat, messages, updateTimestamp = false)
 
   // 格式化对话历史
   const formattedHistory = messages.map(msg => {
-    if (msg.isHidden && msg.role === 'system' && typeof msg.content === 'string' && msg.content.includes('内心独白')) return msg.content;
-    if (msg.isHidden) return null;
-    let sender = msg.role === 'user' ? userNickname : (msg.senderName || chat.originalName);
-    let contentToSummarize = '';
-    if (msg.type === 'offline_text') {
-      contentToSummarize = msg.content || `${msg.dialogue || ''} ${msg.description || ''}`.trim();
-    } else if (typeof msg.content === 'string') {
-      contentToSummarize = msg.content;
-    } else if (msg.type === 'voice_message') {
-      contentToSummarize = `[语音: ${msg.content}]`;
-    } else if (msg.type === 'ai_image' || msg.type === 'user_photo') {
-      contentToSummarize = `[图片: ${msg.content}]`;
-    } else if (msg.type === 'sticker') {
-      contentToSummarize = `[表情: ${msg.meaning || 'sticker'}]`;
-    } else {
-      contentToSummarize = `[${msg.type || '消息'}]`;
-    }
-    const msgTime = new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `[${msgTime}] ${sender}: ${contentToSummarize}`;
+    return window.MemoryExtractionSupport.formatMessage(msg, chat);
   }).filter(Boolean).join('\n');
 
   const systemPrompt = window.structuredMemoryManager.buildSummaryPrompt(chat, formattedHistory, timeRangeStr);

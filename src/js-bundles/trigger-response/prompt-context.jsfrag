@@ -31,7 +31,7 @@
             } else if (memMode === 'structured' && window.structuredMemoryManager) {
               memberMemContent = window.structuredMemoryManager.serializeForPrompt(memberChat);
             } else if (memberChat.longTermMemory && memberChat.longTermMemory.length > 0) {
-              memberMemContent = memberChat.longTermMemory.map(mem => `- (记录于 ${formatTimeAgo(mem.timestamp)}) ${mem.content}`).join('\n');
+              memberMemContent = getMemoryContextForPrompt(memberChat, { includeTimestamp: true });
             }
 
             if (memberMemContent && memberMemContent.trim() !== '') {
@@ -249,7 +249,7 @@
           const memMode = chat.settings?.memoryMode || (chat.settings?.enableStructuredMemory ? 'structured' : 'diary');
           if (memMode === 'vector' && window.vectorMemoryManager) return window.vectorMemoryManager.serializeForPromptSync(chat);
           if (memMode === 'structured' && window.structuredMemoryManager) return window.structuredMemoryManager.serializeForPrompt(chat);
-          return chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
+          return getMemoryContextForPrompt(chat);
         })();
         
         let novelAiImageGroupContext = localStorage.getItem('novelai-enabled') === 'true' ? `-   **NovelAI图片分享**: \`{"type": "naiimag", "name": "你的角色名", "prompt": "详细的英文描述词..."}\` 
@@ -334,6 +334,7 @@
         systemPrompt = processPromptWithSettings(systemPrompt, chat.settings.isOfflineMode ? 'group_offline' : 'group');
 
         messagesPayload = filteredHistory.map(msg => {
+            if (window.RemarkNames.getEvent(msg, chat)) return null;
           // 处理系统消息（旁白和系统通知）
           if (msg.role === 'system' && !msg.isHidden) {
             if (msg.type === 'narration') {
@@ -653,7 +654,7 @@ ${enabledEntries}
           } else if (memModeOffline === 'structured' && window.structuredMemoryManager) {
             longTermMemoryContextOffline = window.structuredMemoryManager.serializeForPrompt(chat);
           } else {
-            longTermMemoryContextOffline = chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
+            longTermMemoryContextOffline = getMemoryContextForPrompt(chat);
           }
           
           let aiAgeContext = getDynamicAgeContext(chat);
@@ -717,6 +718,7 @@ ${enabledEntries}
           systemPrompt = processPromptWithSettings(systemPrompt, 'offline');
           
           messagesPayload = filteredHistory.map(msg => {
+            if (window.RemarkNames.getEvent(msg, chat)) return null;
             if (msg.isHidden) return null;
 
 

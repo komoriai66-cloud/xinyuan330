@@ -333,6 +333,7 @@ ${internalMonologueBuilder}
           chat.longTermMemory.push(newMemory);
 
           await db.chats.put(chat);
+          window.normalMemoryManager?.afterSummary(chat, newMemory, null, chat).catch(error => console.warn('[普通记忆]', error));
           injectedCount++;
         }
       }

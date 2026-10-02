@@ -2,9 +2,9 @@
 
   async function loadFontPresetsDropdown() {
     const selectEl = document.getElementById('font-preset-select');
-    selectEl.innerHTML = '<option value="">-- 选择一个预设 --</option>';
-
+    if (!selectEl) return;
     const presets = await db.appearancePresets.where('type').equals('font').toArray();
+    selectEl.innerHTML = '<option value="">-- 选择一个预设 --</option>';
     presets.forEach(preset => {
       const option = document.createElement('option');
       option.value = preset.id;
@@ -19,25 +19,38 @@
     const selectedId = parseInt(selectEl.value);
     if (isNaN(selectedId)) return;
 
-    const preset = await db.appearancePresets.get(selectedId);
+    const generation = ++fontDraftGeneration;
+    let preset;
+    try { preset = await db.appearancePresets.get(selectedId); }
+    catch (_) { fontNotice('字体预设读取失败，请重试。', 'error'); return; }
+    if (generation !== fontDraftGeneration) return;
     if (preset) {
-      const fontUrlInput = document.getElementById('font-url-input');
-      fontUrlInput.value = preset.value;
-      applyCustomFont(preset.value, true);
+      if (fontBusy || fontReading) return;
+      const draft = getFontDraft();
+      if (preset.value && typeof preset.value === 'object') {
+        Object.assign(draft, normalizeFontSettings(preset.value));
+      } else {
+        // 旧链接预设只替换来源，保留当前字号和范围。
+        draft.fontUrl = String(preset.value || '');
+        draft.fontSourceMode = draft.fontUrl ? 'url' : 'default';
+      }
+      syncFontDraftUI();
+      setFontStatus('字体预设已载入编辑区；保存并应用后生效。');
+      await updateFontPreview();
     }
   }
 
 
   async function saveFontPreset() {
-    const name = await showCustomPrompt('保存字体预设', '请输入预设名称');
+    if (fontBusy || fontReading) { fontNotice('请等待当前字体操作完成。'); return; }
+    const value = normalizeFontSettings(getFontDraft());
+    const name = await showCustomPrompt('保存字体预设', '请输入预设名称（保存来源、字号和范围）');
     if (!name || !name.trim()) return;
 
-    const fontUrl = document.getElementById('font-url-input').value.trim();
-    if (!fontUrl) {
-      alert("字体URL不能为空！");
-      return;
-    }
+    try { await loadUserFont(value); }
+    catch (error) { fontNotice(error.message, 'error'); return; }
 
+    try {
     const existingPreset = await db.appearancePresets.where({
       name: name.trim(),
       type: 'font'
@@ -49,18 +62,19 @@
       if (!confirmed) return;
 
       await db.appearancePresets.update(existingPreset.id, {
-        value: fontUrl
+        value
       });
     } else {
       await db.appearancePresets.add({
         name: name.trim(),
         type: 'font',
-        value: fontUrl
+        value
       });
     }
 
     await loadFontPresetsDropdown();
-    alert('字体预设已保存！');
+    fontNotice('字体预设已保存，正式界面设置未改变。', 'success');
+    } catch (_) { fontNotice('字体预设保存失败，请重试。', 'error'); }
   }
 
 
@@ -69,20 +83,24 @@
     const selectedId = parseInt(selectEl.value);
 
     if (isNaN(selectedId)) {
-      alert('请先从下拉框中选择一个要删除的预设。');
+      fontNotice('请先选择一个要删除的预设。');
       return;
     }
 
-    const preset = await db.appearancePresets.get(selectedId);
+    let preset;
+    try { preset = await db.appearancePresets.get(selectedId); }
+    catch (_) { fontNotice('字体预设读取失败，请重试。', 'error'); return; }
     if (!preset) return;
 
     const confirmed = await showCustomConfirm('删除预设', `确定要删除预设 "${preset.name}" 吗？`, {
       confirmButtonClass: 'btn-danger'
     });
     if (confirmed) {
-      await db.appearancePresets.delete(selectedId);
-      await loadFontPresetsDropdown();
-      alert('预设已删除。');
+      try {
+        await db.appearancePresets.delete(selectedId);
+        await loadFontPresetsDropdown();
+        fontNotice('预设已删除，当前字体设置保留。', 'success');
+      } catch (_) { fontNotice('预设删除失败，请重试。', 'error'); }
     }
   }
 

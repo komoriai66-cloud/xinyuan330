@@ -99,7 +99,7 @@
         const transcriptEl = bubble ? bubble.querySelector('.voice-transcript') : null;
 
 
-        if (voiceBody.dataset.voiceId && transcriptEl && transcriptEl.style.display === 'block') {
+        if ((voiceBody.dataset.voiceId || voiceBody.dataset.ttsProvider === 'elevenlabs') && transcriptEl && transcriptEl.style.display === 'block') {
 
 
           if (chat.isGroup) {
@@ -381,6 +381,7 @@
       if (!state.activeChatId) return;
       const chat = state.chats[state.activeChatId];
       const isGroup = chat.isGroup;
+      window.ttsSettings.loadChat(chat);
       if (window.CharacterBond) window.CharacterBond.loadSettingsUi(chat);
       const mcpEditor = document.getElementById('chat-mcp-permission-editor');
       const groupMcpNote = document.getElementById('group-mcp-permission-note');
@@ -521,6 +522,7 @@
       timePerceptionToggle.checked = chat.settings.enableTimePerception;
       timeZoneGroup.style.display = timePerceptionToggle.checked ? 'block' : 'none';
       if (window.TimeAwareness) window.TimeAwareness.loadSettingsUi(chat);
+      window.MemoryWorldTimeUI?.mount(chat);
 
 
       const timezoneSelect = document.getElementById('time-zone-select');
@@ -731,7 +733,7 @@
         document.getElementById('enable-sticker-smart-match-checkbox').checked = chat.settings.enableStickerSmartMatch || false;
 
         document.getElementById('ai-original-name-input').value = chat.originalName;
-        document.getElementById('ai-voice-id-input').value = chat.settings.minimaxVoiceId || '';
+        // TTS fields are loaded for both single and group settings above.
 
         document.getElementById('ai-voice-lang-group').style.display = isGroup ? 'none' : 'block';
         document.getElementById('ai-voice-lang-select').value = chat.settings.ttsLanguage || '';

@@ -1,8 +1,18 @@
 // ==================== 向量记忆 - 旧记忆转换 (支持多选及结构化记忆) ====================
 
 async function doSmartConvertWithAI(chat, allItems, selectedIndices, keepOriginal) {
-  const BATCH_SIZE = 50;
+  const manager = window.vectorMemoryManager;
+  if (manager._extractionLocks.get(chat)) { showToast('这个聊天正在提取或转换，请等待当前任务结束', 'info'); return; }
+  manager._extractionLocks.set(chat, { type: 'conversion' });
+  try { return await performSmartMemoryConversion(chat, allItems, selectedIndices, keepOriginal); }
+  finally { manager._extractionLocks.delete(chat); }
+}
+
+async function performSmartMemoryConversion(chat, allItems, selectedIndices, keepOriginal) {
   const totalItems = selectedIndices.length;
+  const extractionSettings = window.vectorMemoryManager.getVariableMemory(chat).settings;
+  const BATCH_SIZE = extractionSettings.extractionBatchEnabled === true ? extractionSettings.extractionBatchSize : Math.max(1, totalItems);
+  if (!Number.isSafeInteger(BATCH_SIZE) || BATCH_SIZE < 1 || BATCH_SIZE > 9999 && extractionSettings.extractionBatchEnabled) throw new Error('每批消息数量请输入1～9999之间的整数');
   const totalBatches = Math.ceil(totalItems / BATCH_SIZE);
   
   const userNickname = chat.settings.myNickname || '用户';
@@ -27,12 +37,15 @@ async function doSmartConvertWithAI(chat, allItems, selectedIndices, keepOrigina
     const startIdx = batchIdx * BATCH_SIZE;
     const endIdx = Math.min(startIdx + BATCH_SIZE, totalItems);
     const batchIndices = selectedIndices.slice(startIdx, endIdx);
+    const currentVm = window.vectorMemoryManager.getVariableMemory(chat);
+    const fragmentCheckpoint = JSON.parse(JSON.stringify(currentVm.fragments));
+    const savedSuccessCount = successCount;
     
     // 构造当前批次的文本
     const formattedMemories = batchIndices.map((idx, i) => {
       const item = allItems[idx];
       const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : '过去';
-      return `[编号${i}] (${timeStr}) ${item.content}`;
+      return `[消息${i + 1}] (${timeStr}) ${item.content}`;
     }).join('\n');
 
     const prompt = `
@@ -54,7 +67,9 @@ async function doSmartConvertWithAI(chat, allItems, selectedIndices, keepOrigina
     "category": "U/A/R/E/I/L/P/T/M/C",
     "importance": 1-10,
     "emotionalWeight": 1-10,
-    "memoryTime": 1700000000000
+    "memoryTime": null,
+    "sourceMessageIds": [1],
+    "timeBasis": "explicit/unknown"
   }
 ]
 \`\`\`
@@ -85,31 +100,35 @@ async function doSmartConvertWithAI(chat, allItems, selectedIndices, keepOrigina
 # 待处理的旧记忆
 ${formattedMemories}
 
+每条输出sourceMessageIds（对应消息编号）、timeBasis（explicit/unknown）。原文中的[YYMMDD]、(YYMMDD)或[YYMM][DD]才是事件日期；外层时间可能是总结写入时间，不能当作发生日期。没有依据时memoryTime为null，不猜今天。
+
 注意：你可以将意思重复的几条记忆合并为一条更精炼的记忆。如果没有意义的内容可以直接丢弃。请直接输出JSON数组。`;
 
     try {
       const isGemini = proxyUrl === window.GEMINI_API_URL;
-      let response;
+      let data;
       if (isGemini && typeof toGeminiRequestData === 'function') {
         const geminiConfig = toGeminiRequestData(model, apiKey, prompt, [{ role: 'user', content: '请开始智能转换。' }]);
-        response = await fetch(geminiConfig.url, geminiConfig.data);
+        data = await window.MemoryExtractionSupport.requestData(geminiConfig.url, geminiConfig.data);
       } else {
-        response = await fetch(`${proxyUrl}/v1/chat/completions`, {
+        data = await window.MemoryExtractionSupport.requestData(`${proxyUrl}/v1/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
           body: JSON.stringify({ model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: '请开始智能转换。' }], temperature: 0.3 })
         });
       }
 
-      if (!response.ok) throw new Error(`API返回 ${response.status}`);
-      const data = await response.json();
+      if (['length', 'MAX_TOKENS', 'SAFETY', 'content_filter'].includes(data.choices?.[0]?.finish_reason || data.candidates?.[0]?.finishReason)) throw new Error('转换输出不完整，未保存本批结果');
       const rawText = typeof getGeminiResponseText === 'function' ? getGeminiResponseText(data) : (data.choices?.[0]?.message?.content || '');
 
-      const extracted = window.vectorMemoryManager.parseExtractionResult(rawText);
+      const sourceItems = batchIndices.map(index => ({ timestamp: allItems[index].timestamp, content: allItems[index].content }));
+      const extracted = window.vectorMemoryManager.parseExtractionResult(rawText).map(item => ({
+        ...item, ...window.MemoryExtractionSupport.resolveTime(item, sourceItems)
+      }));
       
       for (const item of extracted) {
         const vm = window.vectorMemoryManager.getVariableMemory(chat);
-        const duplicate = vm.fragments.some(fragment => fragment.content.trim() === item.content.trim() || window.vectorMemoryManager.bm25Match(window.vectorMemoryManager.tokenize(item.content), fragment.content) > 0.9);
+        const duplicate = vm.fragments.some(fragment => window.vectorMemoryManager._isLikelyDuplicate(chat, item, fragment));
         if (duplicate) continue;
         const embeddingText = window.vectorMemoryManager._embeddingTextFor(chat, item);
         const embedding = await window.vectorMemoryManager.getEmbedding(embeddingText, chat);
@@ -118,15 +137,17 @@ ${formattedMemories}
           embedding,
           embeddingSignature: embedding ? window.vectorMemoryManager._embeddingSignature(chat) : '',
           embeddingTextHash: embedding ? window.vectorMemoryManager._hashEmbeddingText(embeddingText) : '',
-          memoryTime: item.memoryTime || Date.now(),
+          memoryTime: item.memoryTime,
           source: 'smart_convert'
         });
         successCount++;
       }
+      await db.chats.put(chat);
 
       // 记录要删除的原条目
       if (!keepOriginal && extracted.length > 0) {
-        batchIndices.forEach(idx => {
+        const referenced = new Set(extracted.flatMap(item => item.sourceMessageIds || []));
+        batchIndices.filter((_, index) => referenced.has(index + 1)).forEach(idx => {
           const item = allItems[idx];
           if (item.type === 'longTerm') {
             longTermToDelete.push({ authorId: item.authorId, id: item.id });
@@ -139,14 +160,18 @@ ${formattedMemories}
 
     } catch (e) {
       console.error(`智能转换批次 ${batchIdx+1} 失败:`, e);
-      failCount += batchIndices.length;
+      currentVm.fragments = fragmentCheckpoint;
+      currentVm.stats.totalFragments = fragmentCheckpoint.length;
+      successCount = savedSuccessCount;
+      failCount = totalItems - startIdx;
+      showToast(`转换停止：${e.message}。已成功保存的部分保留，未完成部分没有自动重试。`, 'error', 5000);
+      break;
     }
     
     if (progressToast) {
       const el = document.querySelector('.toast:last-child');
       if (el) el.textContent = `智能转换中... ${batchIdx+1}/${totalBatches}批 (精炼出: ${successCount}条)`;
     }
-    await new Promise(r => setTimeout(r, 1000));
   }
 
   // 删除逻辑
@@ -216,7 +241,7 @@ ${formattedMemories}
 
   await db.chats.put(chat);
   if (progressToast) document.querySelectorAll('.toast').forEach(el => el.remove());
-  showToast(`智能转换完成！\n- 精炼提取：${successCount} 条高质量记忆`, 'success', 5000);
+  showToast(failCount ? `转换未完成：已保存${successCount}条，剩余${failCount}条旧记忆保留` : `智能转换完成：保存${successCount}条记忆`, failCount ? 'info' : 'success', 5000);
   
   if (document.getElementById('vector-memory-container')?.style.display !== 'none') {
     if (typeof renderVectorMemoryView === 'function') renderVectorMemoryView();
@@ -237,6 +262,8 @@ async function convertLongTermMemoryToVector(chatId) {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   };
   const monthTimestamp = (yearMonth) => {
+    const compact = String(yearMonth || '').match(/^(\d{2})(\d{2})$/);
+    if (compact) return new Date(2000 + Number(compact[1]), Number(compact[2]) - 1, 1, 12).getTime();
     const match = String(yearMonth || '').match(/(\d{4})[-/.年](\d{1,2})/);
     return match ? new Date(Number(match[1]), Number(match[2]) - 1, 1, 12).getTime() : undefined;
   };
@@ -400,6 +427,7 @@ async function convertLongTermMemoryToVector(chatId) {
     cancelBtn.style.display = 'block';
 
     confirmBtn.onclick = async () => {
+      if (window.vectorMemoryManager._extractionLocks.get(chat)) { showToast('这个聊天正在提取或转换，请等待当前任务结束', 'info'); return; }
       const selectedIndices = Array.from(document.querySelectorAll('.memory-convert-checkbox:checked')).map(cb => parseInt(cb.dataset.index));
       const keepOriginal = document.getElementById('keep-original-memory').checked;
       const smartConvert = document.getElementById('ai-smart-convert') ? document.getElementById('ai-smart-convert').checked : false;
@@ -412,9 +440,11 @@ async function convertLongTermMemoryToVector(chatId) {
       hideCustomModal();
 
       if (smartConvert) {
-        await doSmartConvertWithAI(chat, items, selectedIndices, keepOriginal);
+        try { await doSmartConvertWithAI(chat, items, selectedIndices, keepOriginal); }
+        catch (error) { showToast('转换失败：' + error.message, 'error'); }
         return;
       }
+      window.vectorMemoryManager._extractionLocks.set(chat, { type: 'conversion' });
       
       let progressToast = showToast(`转换中... 0/${selectedIndices.length}`, 'info', 0);
       let successCount = 0;
@@ -429,7 +459,8 @@ async function convertLongTermMemoryToVector(chatId) {
           const item = items[selectedIndices[i]];
           try {
             const vm = window.vectorMemoryManager.getVariableMemory(chat);
-            const duplicate = vm.fragments.some(fragment => fragment.content.trim() === item.content.trim() || window.vectorMemoryManager.bm25Match(window.vectorMemoryManager.tokenize(item.content), fragment.content) > 0.9);
+            const memoryTime = window.MemoryExtractionSupport.datedText(item.content);
+            const duplicate = vm.fragments.some(fragment => window.vectorMemoryManager._isLikelyDuplicate(chat, { content: item.content, category: item.mappedCategory, memoryTime }, fragment));
             if (duplicate) {
               if (!keepOriginal) {
                 if (item.type === 'longTerm') longTermToDelete.push({ authorId: item.authorId, id: item.id });
@@ -458,7 +489,8 @@ async function convertLongTermMemoryToVector(chatId) {
               embedding: embedding || null,
               embeddingSignature: embedding ? window.vectorMemoryManager._embeddingSignature(chat) : '',
               embeddingTextHash: embedding ? window.vectorMemoryManager._hashEmbeddingText(embeddingText) : '',
-              memoryTime: item.timestamp || Date.now(),
+              memoryTime,
+              timeBasis: memoryTime ? 'explicit' : 'unknown',
               source: 'manual'
             });
             successCount++;
@@ -571,6 +603,8 @@ async function convertLongTermMemoryToVector(chatId) {
         if (progressToast) document.querySelectorAll('.toast').forEach(el => el.remove());
         console.error('变量记忆转换出错:', error);
         showToast(`转换中断：${error.message}\n已成功转换 ${successCount} 条`, 'error', 5000);
+      } finally {
+        window.vectorMemoryManager._extractionLocks.delete(chat);
       }
     };
 

@@ -1,131 +1,9 @@
-// ==================== 向量记忆自动总结 ====================
-// ===== 变量记忆提取核心逻辑（公共函数） =====
-async function executeVectorExtraction(chat, messages, updateTimestamp = false) {
-  if (messages.length === 0) {
-    showToast('没有可总结的消息', 'info');
-    return;
-  }
-
-  const userNickname = chat.settings.myNickname || '用户';
-  const formattedHistory = messages.map(msg => {
-    const sender = msg.role === 'user' ? userNickname : (msg.senderName || chat.name || chat.originalName);
-    const time = new Date(msg.timestamp).toLocaleString('zh-CN');
-    let content = '';
-    if (msg.type === 'voice_message') content = `[语音] ${msg.content}`;
-    else if (msg.type === 'ai_image') content = `[图片: ${msg.content}]`;
-    else if (Array.isArray(msg.content)) content = '[图片]';
-    else content = String(msg.content || '');
-    return `(${time}) ${sender}: ${content}`;
-  }).join('\n');
-
-  const firstTime = new Date(messages[0].timestamp).toLocaleString('zh-CN');
-  const lastTime = new Date(messages[messages.length - 1].timestamp).toLocaleString('zh-CN');
-  const timeRangeStr = `${firstTime} ~ ${lastTime}`;
-  
-  // 构建对话时间范围对象
-  const dialogueTimeRange = {
-    start: messages[0].timestamp,
-    end: messages[messages.length - 1].timestamp
-  };
-
-  const prompt = window.vectorMemoryManager.buildExtractionPrompt(chat, formattedHistory, timeRangeStr, dialogueTimeRange);
-
-  showToast('正在提取变量记忆...', 'info');
-  const apiConfig = window.state.apiConfig;
-  const useSecondary = apiConfig.secondaryProxyUrl && apiConfig.secondaryApiKey && apiConfig.secondaryModel;
-  const proxyUrl = useSecondary ? apiConfig.secondaryProxyUrl : apiConfig.proxyUrl;
-  const apiKey = useSecondary ? apiConfig.secondaryApiKey : apiConfig.apiKey;
-  const model = useSecondary ? apiConfig.secondaryModel : apiConfig.model;
-
-  const isGemini = proxyUrl === window.GEMINI_API_URL;
-  let response;
-  if (isGemini && typeof toGeminiRequestData === 'function') {
-    const geminiConfig = toGeminiRequestData(model, apiKey, prompt, [{ role: 'user', content: '请开始提取。' }]);
-    response = await fetch(geminiConfig.url, geminiConfig.data);
-  } else {
-    response = await fetch(`${proxyUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: '请开始提取。' }], temperature: 0.3 })
-    });
-  }
-
-  if (!response.ok) throw new Error(`API返回 ${response.status}`);
-  const data = await response.json();
-  const rawText = typeof getGeminiResponseText === 'function' ? getGeminiResponseText(data) : (data.choices?.[0]?.message?.content || '');
-
-  // 查找本次处理的最后一条消息在总历史记录中的索引
-  let processedLastIndex = -1;
-  if (chat.history) {
-    const lastMsg = messages[messages.length - 1];
-    processedLastIndex = chat.history.lastIndexOf(lastMsg);
-    if (processedLastIndex < 0) processedLastIndex = chat.history.findLastIndex(m => m.timestamp === lastMsg.timestamp);
-  }
-
-  const extracted = window.vectorMemoryManager.parseExtractionResult(rawText);
-  if (extracted.length > 0) {
-    // 使用提取的消息段中最后一条消息的时间作为这段记忆的发生时间
-    const defaultMemoryTime = dialogueTimeRange.end || Date.now();
-    const newIds = await window.vectorMemoryManager.mergeExtractedMemories(chat, extracted, defaultMemoryTime);
-    if (updateTimestamp) {
-      const vm = window.vectorMemoryManager.getVariableMemory(chat);
-      if (processedLastIndex !== -1) {
-        vm.settings.lastExtractedMsgIndex = processedLastIndex;
-      }
-    }
-    await db.chats.put(chat);
-    showToast(`成功提取 ${newIds.length} 条变量记忆`, 'success');
-    if (document.getElementById('vector-memory-container')?.style.display !== 'none') {
-      renderVectorMemoryView();
-    }
-  } else {
-    if (updateTimestamp) {
-      const vm = window.vectorMemoryManager.getVariableMemory(chat);
-      if (processedLastIndex !== -1) {
-        vm.settings.lastExtractedMsgIndex = processedLastIndex;
-      }
-      await db.chats.put(chat);
-      console.log('[变量记忆] 虽未提取到新记忆，但已更新消息索引以避免重复处理');
-    }
-    
-    // 如果没有提取到记忆，仅在手动提取时才弹窗告知，自动提取（后台）仅使用轻量提示
-    if (!updateTimestamp) {
-      if (typeof showCustomAlert === 'function') {
-        await showCustomAlert('提取完成', '当前对话片段中没有发现值得作为长期记忆记录的新内容。\n\n系统进度已更新，后续会继续检查新消息。');
-      } else {
-        alert('提取完成：当前对话片段中没有发现值得作为长期记忆记录的新内容。\n\n系统进度已更新，后续会继续检查新消息。');
-      }
-    } else {
-      showToast('变量记忆：暂无新内容需提取，已更新进度', 'info');
-    }
-  }
-}
-
-async function executeVectorExtractionInBatches(chat, messages, updateTimestamp = false) {
-  const maxMessagesPerBatch = 100;
-  const maxCharsPerBatch = 40000;
-  let batch = [];
-  let batchChars = 0;
-
-  for (const message of messages) {
-    const messageChars = String(message?.content || '').length;
-    if (batch.length && (batch.length >= maxMessagesPerBatch || batchChars + messageChars > maxCharsPerBatch)) {
-      await executeVectorExtraction(chat, batch, updateTimestamp);
-      batch = [];
-      batchChars = 0;
-    }
-    batch.push(message);
-    batchChars += messageChars;
-  }
-  if (batch.length) await executeVectorExtraction(chat, batch, updateTimestamp);
-}
-
 // ===== 变量记忆总结模式选择菜单 =====
 async function openVectorSummaryMenu(chat) {
   const vm = window.vectorMemoryManager.getVariableMemory(chat);
   const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
   const historyLen = chat.history ? chat.history.length : 0;
-  const newMessagesCount = Math.max(0, historyLen - 1 - lastIdx);
+  const newMessagesCount = (chat.history || []).slice(lastIdx + 1).filter(window.MemoryExtractionSupport.eligible).length;
   const totalMessages = historyLen;
 
   return new Promise(resolve => {
@@ -150,6 +28,16 @@ async function openVectorSummaryMenu(chat) {
         title: '重置提取进度',
         description: '重置后下次对话将从头提取',
         info: `当前进度索引：${lastIdx}`
+      },
+      {
+        id: 'repair-dates', title: '修复记忆日期',
+        description: '按原文日期修复；无依据的标为时间不明。修复前保存备份。',
+        info: '本地处理，不调用模型'
+      },
+      {
+        id: 'restore-dates', title: '撤销上次日期修复',
+        description: '恢复上次修复前的日期，不删除后来新增的记忆',
+        info: vm.dateRepairBackups?.length ? '有可恢复备份' : '暂无修复备份'
       }
     ];
 
@@ -194,6 +82,12 @@ async function openVectorSummaryMenu(chat) {
             break;
           case 'reset':
             await handleVectorResetTimestamp(chat);
+            break;
+          case 'repair-dates':
+            await handleVectorDateRepair(chat);
+            break;
+          case 'restore-dates':
+            await handleVectorDateRestore(chat);
             break;
         }
       } else {
@@ -318,6 +212,7 @@ async function handleVectorRangeSummary(chat) {
 
 // ===== 变量记忆 - 重置进度 =====
 async function handleVectorResetTimestamp(chat) {
+  if (window.vectorMemoryManager._extractionLocks.get(chat)) { showToast('请先暂停或取消当前提取', 'info'); return; }
   const vm = window.vectorMemoryManager.getVariableMemory(chat);
   const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
   const totalMessages = chat.history.length;
@@ -335,18 +230,65 @@ async function handleVectorResetTimestamp(chat) {
   const confirmed = await showCustomConfirm('确认重置', message);
   if (confirmed) {
     vm.settings.lastExtractedMsgIndex = -1;
+    vm.settings.lastExtractedSourceKey = '';
+    vm.settings.extractionProgressError = '';
+    vm.settings.autoExtractionBlocked = false;
+    vm.settings.autoExtractionPending = false;
+    if (vm.extractionTask) vm.extractionTask.status = 'cancelled';
     await db.chats.put(chat);
     showToast('已重置进度，下次将重新提取', 'success');
   }
+}
+
+async function handleVectorDateRepair(chat) {
+  const manager = window.vectorMemoryManager;
+  if (manager._extractionLocks.get(chat)) { showToast('请先结束当前提取', 'info'); return; }
+  const vm = manager.getVariableMemory(chat);
+  const changes = window.MemoryExtractionSupport.repairDates(vm.fragments, chat.history);
+  if (!changes.length) { showToast('没有需要修复的日期', 'info'); return; }
+  const unknown = changes.filter(change => change.memoryTime === null).length;
+  const preview = changes.slice(0, 5).map(change => {
+    const fragment = vm.fragments.find(item => item.id === change.id);
+    return `${fragment.content.slice(0, 60)}\n${window.MemoryExtractionSupport.formatTime(fragment)} → ${window.MemoryExtractionSupport.formatTime(change)}`;
+  }).join('\n\n');
+  const confirmed = await showCustomConfirm('修复记忆日期', `将修复${changes.length}条，其中${unknown}条没有可靠日期，将标为时间不明。修复前会保存日期备份，可在本菜单撤销。\n\n${preview}`);
+  if (!confirmed) return;
+  const fields = ['memoryTime', 'memoryTimeEnd', 'timeBasis', 'timePrecision', 'timeEvidence', 'eventTimeText'];
+  const backup = { createdAt: Date.now(), dates: vm.fragments.map(fragment => ({ id: fragment.id, ...Object.fromEntries(fields.map(field => [field, fragment[field] ?? null])) })) };
+  const previous = JSON.parse(JSON.stringify(vm));
+  vm.dateRepairBackups = [...(vm.dateRepairBackups || []), backup];
+  changes.forEach(change => Object.assign(vm.fragments.find(fragment => fragment.id === change.id), change));
+  vm._retrievalCache = manager._emptyRetrievalCache();
+  try { await db.chats.put(chat); }
+  catch (error) { chat.variableMemory = previous; showToast('修复未保存：' + error.message, 'error'); return; }
+  refreshVectorExtraction(chat);
+  showToast(`已修复${changes.length}条日期，备份已保存`, 'success');
+}
+
+async function handleVectorDateRestore(chat) {
+  const manager = window.vectorMemoryManager;
+  if (manager._extractionLocks.get(chat)) { showToast('请先结束当前提取', 'info'); return; }
+  const vm = manager.getVariableMemory(chat);
+  const backup = vm.dateRepairBackups?.[vm.dateRepairBackups.length - 1];
+  if (!backup) { showToast('暂无日期修复备份', 'info'); return; }
+  if (!await showCustomConfirm('撤销日期修复', '恢复上次修复前的日期；后来新增的记忆保留。')) return;
+  const previous = JSON.parse(JSON.stringify(vm));
+  backup.dates.forEach(date => {
+    const fragment = vm.fragments.find(item => item.id === date.id);
+    if (fragment) Object.assign(fragment, date);
+  });
+  vm.dateRepairBackups.pop();
+  vm._retrievalCache = manager._emptyRetrievalCache();
+  try { await db.chats.put(chat); }
+  catch (error) { chat.variableMemory = previous; showToast('恢复未保存：' + error.message, 'error'); return; }
+  refreshVectorExtraction(chat);
+  showToast('已撤销上次日期修复', 'success');
 }
 
 // ===== 兼容旧的自动总结调用 =====
 async function triggerVectorMemorySummary(chatId, force = false) {
   const chat = state.chats[chatId];
   if (!chat || !window.vectorMemoryManager) return;
-  if (window.vectorMemoryManager._extractionLocks.get(chat)) return;
-  window.vectorMemoryManager._extractionLocks.set(chat, true);
-
   try {
     const vm = window.vectorMemoryManager.getVariableMemory(chat);
     const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
@@ -370,10 +312,6 @@ async function triggerVectorMemorySummary(chatId, force = false) {
       return;
     }
 
-    if (!force) {
-      vm.settings.autoExtractionPending = true;
-      await db.chats.put(chat);
-    }
     await executeVectorExtractionInBatches(chat, messagesToProcess, !force);
     if (!force) {
       vm.settings.autoExtractionPending = false;
@@ -382,8 +320,6 @@ async function triggerVectorMemorySummary(chatId, force = false) {
   } catch (e) {
     console.error('[变量记忆] 提取失败:', e);
     showToast('变量记忆提取失败: ' + e.message, 'error');
-  } finally {
-    window.vectorMemoryManager._extractionLocks.delete(chat);
   }
 }
 
@@ -393,6 +329,7 @@ window.triggerVectorMemorySummary = triggerVectorMemorySummary;
 function renderLongTermMemoryList() {
   const container = document.getElementById('original-memory-list') || document.getElementById('memory-list-container');
   const chat = state.chats[state.activeChatId];
+  window.normalMemoryManager?.renderEntry(chat);
   container.innerHTML = '';
 
   let memoriesToDisplay = [];
@@ -477,20 +414,20 @@ function loadMoreMemories() {
                   
                   <div style="display: flex; gap: 8px;">
                       ${memory.source === 'refined' && memory.originalMemories ? `
-                      <button class="memory-action-btn restore-memory-btn" data-author-id="${memory.authorChatId}" data-memory-timestamp="${memory.timestamp}" title="还原旧记忆">
+                      <button class="memory-action-btn restore-memory-btn" data-author-id="${memory.authorChatId}" data-memory-timestamp="${memory.timestamp}" data-normal-memory-id="${memory.normalMemoryId || ''}" title="还原旧记忆">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px; stroke: #28a745;">
                               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
                               <path d="M3 3v5h5"></path>
                           </svg>
                       </button>
                       ` : ''}
-                      <button class="memory-action-btn edit-memory-btn" data-author-id="${memory.authorChatId}" data-memory-timestamp="${memory.timestamp}" title="编辑">
+                      <button class="memory-action-btn edit-memory-btn" data-author-id="${memory.authorChatId}" data-memory-timestamp="${memory.timestamp}" data-normal-memory-id="${memory.normalMemoryId || ''}" title="编辑">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                           </svg>
                       </button>
-                      <button class="memory-action-btn delete-memory-btn" data-author-id="${memory.authorChatId}" data-memory-timestamp="${memory.timestamp}" title="删除">
+                      <button class="memory-action-btn delete-memory-btn" data-author-id="${memory.authorChatId}" data-memory-timestamp="${memory.timestamp}" data-normal-memory-id="${memory.normalMemoryId || ''}" title="删除">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px; stroke:#ff3b30;">
                               <polyline points="3 6 5 6 21 6"></polyline>
                               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -544,22 +481,24 @@ async function handleAddManualMemory() {
   const content = await showCustomPrompt(`为"${targetChatForMemory.name}"添加记忆`, '请输入要添加的记忆要点：', '', 'textarea');
   if (content && content.trim()) {
     if (!targetChatForMemory.longTermMemory) targetChatForMemory.longTermMemory = [];
-    targetChatForMemory.longTermMemory.push({
+    const addedMemory = {
       content: content.trim(),
       timestamp: Date.now(),
       source: 'manual'
-    });
+    };
+    targetChatForMemory.longTermMemory.push(addedMemory);
     await db.chats.put(targetChatForMemory);
+    window.normalMemoryManager?.afterSummary(targetChatForMemory, addedMemory, null, targetChatForMemory).catch(error => console.warn('[普通记忆]', error));
     renderLongTermMemoryList();
   }
 }
 
 
 
-async function handleEditMemory(authorChatId, memoryTimestamp) {
+async function handleEditMemory(authorChatId, memoryTimestamp, normalMemoryId = null) {
   const authorChat = state.chats[authorChatId];
   if (!authorChat || !authorChat.longTermMemory) return;
-  const memoryIndex = authorChat.longTermMemory.findIndex(m => m.timestamp === memoryTimestamp);
+  const memoryIndex = authorChat.longTermMemory.findIndex(m => normalMemoryId ? m.normalMemoryId === normalMemoryId : m.timestamp === memoryTimestamp);
   if (memoryIndex === -1) return;
   const memory = authorChat.longTermMemory[memoryIndex];
   const newContent = await showCustomPrompt('编辑记忆', '请修改记忆要点：', memory.content, 'textarea');
@@ -570,14 +509,14 @@ async function handleEditMemory(authorChatId, memoryTimestamp) {
   }
 }
 
-async function handleDeleteMemory(authorChatId, memoryTimestamp) {
+async function handleDeleteMemory(authorChatId, memoryTimestamp, normalMemoryId = null) {
   const confirmed = await showCustomConfirm('确认删除', '确定要删除这条长期记忆吗？', {
     confirmButtonClass: 'btn-danger'
   });
   if (confirmed) {
     const authorChat = state.chats[authorChatId];
     if (!authorChat || !authorChat.longTermMemory) return;
-    authorChat.longTermMemory = authorChat.longTermMemory.filter(m => m.timestamp !== memoryTimestamp);
+    authorChat.longTermMemory = authorChat.longTermMemory.filter(m => normalMemoryId ? m.normalMemoryId !== normalMemoryId : m.timestamp !== memoryTimestamp);
     await db.chats.put(authorChat);
     renderLongTermMemoryList();
   }

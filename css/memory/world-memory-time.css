@@ -1,0 +1,28 @@
+.memory-time-settings { color: var(--text-color, #333); font-size: 12px; line-height: 1.45; }
+#memory-time-settings-host { margin: 0 16px 12px; }
+.memory-time-settings [hidden] { display: none !important; }
+.memory-time-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; margin: 10px 0; }
+.memory-time-row > span { min-width: 0; flex: 1; }
+.memory-time-settings .toggle-switch { flex-shrink: 0; margin: 0; }
+.memory-time-settings .memory-time-select { width: min(54%, 185px) !important; max-width: 54%; min-width: 0; flex: 0 1 185px; font-size: 12px; }
+.memory-time-settings .memory-time-number { width: 72px !important; max-width: 35%; min-width: 0; text-align: right; font-size: 12px; }
+.memory-time-help { font-size: 11px; line-height: 1.5; color: var(--text-secondary, #8e8e93); overflow-wrap: anywhere; margin: 6px 0; }
+.memory-time-disclosure { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 8px; padding: 8px 0; border: 0; border-top: 1px solid var(--border-color, #e5e5ea); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.memory-time-disclosure > :last-child { font-size: 11px; color: var(--text-secondary, #8e8e93); }
+.memory-time-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.memory-time-actions button, .memory-time-back { border: 1px solid var(--border-color, #ddd); border-radius: 8px; padding: 6px 9px; background: var(--secondary-bg, #fff); color: var(--accent-color, #007aff); font: inherit; font-size: 12px; cursor: pointer; max-width: 100%; overflow-wrap: anywhere; }
+.memory-time-settings button:disabled { opacity: .5; cursor: default; }
+.memory-time-field { display: grid; gap: 5px; margin: 10px 0; min-width: 0; }
+.memory-time-settings .memory-time-field input { box-sizing: border-box; width: 100% !important; text-align: left !important; min-width: 0; max-width: 100%; padding: 7px 9px; border: 1px solid var(--border-color, #ddd); border-radius: 8px; background: var(--input-bg, #f5f5f7); color: inherit; font: inherit; }
+.memory-time-detail { z-index: 1500; }
+.memory-time-detail .memory-time-settings { padding: 14px 16px; }
+.memory-time-back { border: 0; background: transparent; font-size: 26px; padding: 0; width: 30px; flex-shrink: 0; }
+.memory-time-header-spacer { width: 30px; flex-shrink: 0; }
+.memory-time-evidence { font-size: 12px; overflow-wrap: anywhere; }
+.memory-time-evidence p { white-space: pre-wrap; border-left: 2px solid var(--border-color, #ddd); padding-left: 8px; }
+#custom-time-rate { width: 60px; min-width: 0; max-width: 25%; font-size: 12px; }
+.vm-time-source-btn { border: 0; border-radius: 4px; padding: 2px 5px; background: var(--secondary-bg, #f0f0f0); color: var(--text-secondary, #888); font: inherit; font-size: 10px; max-width: 100%; cursor: pointer; }
+@media (max-width: 375px) {
+  .memory-time-row { gap: 7px; }
+  .memory-time-settings .memory-time-select { max-width: 52%; font-size: 11px; padding-right: 4px; padding-left: 6px; }
+}

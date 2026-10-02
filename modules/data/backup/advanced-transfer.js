@@ -522,6 +522,7 @@
           chatId: chat.id,
           chatName: chat.name,
           longTermMemory: JSON.parse(JSON.stringify(chat.longTermMemory || [])),
+          normalMemory: window.normalMemoryManager?.transfer(chat) || null,
           structuredMemory: chat.structuredMemory ? JSON.parse(JSON.stringify(chat.structuredMemory)) : null,
           variableMemory: chat.variableMemory ? (() => { const value = JSON.parse(JSON.stringify(chat.variableMemory)); if (value.settings) delete value.settings.embeddingApiKey; delete value._retrievalCache; return value; })() : null,
           vectorMemory: chat.vectorMemory ? (() => { const value = JSON.parse(JSON.stringify(chat.vectorMemory)); if (value.settings) delete value.settings.embeddingApiKey; delete value._retrievalCache; return value; })() : null,
@@ -768,6 +769,8 @@
           for (const record of records) {
             const chat = state.chats[record.chatId];
             if (!chat) continue;
+            if (window.normalMemoryManager?.locks.has(chat)) throw new Error('请先暂停该角色的普通记忆梳理再导入备份');
+            window.normalMemoryManager?.validateState(record.normalMemory);
             chat.longTermMemory = Array.isArray(chat.longTermMemory) ? chat.longTermMemory : [];
             const existingMemoryKeys = new Set(chat.longTermMemory.map(item => `${item.timestamp || ''}\u0000${String(item.content || '').trim()}`));
             for (const item of (record.longTermMemory || [])) {
@@ -777,6 +780,7 @@
                 existingMemoryKeys.add(key);
               }
             }
+            window.normalMemoryManager?.importState(chat, record.normalMemory, 'merge');
             if (record.structuredMemory && window.structuredMemoryManager) {
               const structuredPayload = { version: '1.0', type: 'structured-memory', ...record.structuredMemory };
               window.structuredMemoryManager.importMemory(chat, JSON.stringify(structuredPayload), 'merge');

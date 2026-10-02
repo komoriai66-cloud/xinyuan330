@@ -1,5 +1,5 @@
 window.__EPHONE_HTML_FRAGMENT_SCRIPTS = [
-  "generated/html-fragments/document-head.js?v=feedback-workbench-20260930",
+  "generated/html-fragments/document-head.js?v=20261002-release",
   "generated/html-fragments/intro-and-home.js",
   "generated/html-fragments/health-and-couple.js",
   "generated/html-fragments/cphone.js",
@@ -10,7 +10,7 @@ window.__EPHONE_HTML_FRAGMENT_SCRIPTS = [
   "generated/html-fragments/api-settings-data.js?v=feedback-20260930-workbench",
   "generated/html-fragments/data-and-social-list.js",
   "generated/html-fragments/chat-interface.js",
-  "generated/html-fragments/appearance-and-thoughts.js",
+  "generated/html-fragments/appearance-and-thoughts.js?v=fonts-20261001",
   "generated/html-fragments/calls-and-social.js",
   "generated/html-fragments/chat-settings-main.js",
   "generated/html-fragments/chat-settings-extra.js",

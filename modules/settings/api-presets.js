@@ -44,6 +44,7 @@
         preset.secondaryApiKey === currentConfig.secondaryApiKey &&
         preset.secondaryModel === currentConfig.secondaryModel &&
 
+        Object.entries(window.ttsProvider.apiFields(currentConfig)).every(([key, value]) => JSON.stringify(preset[key] ?? window.ttsProvider.defaults[key]) === JSON.stringify(value)) &&
         (preset.minimaxGroupId || '') === (currentConfig.minimaxGroupId || '') &&
         (preset.minimaxApiKey || '') === (currentConfig.minimaxApiKey || '') &&
         (preset.minimaxModel || 'speech-01') === (currentConfig.minimaxModel || 'speech-01')
@@ -74,6 +75,7 @@
       // 1. 加载预设 (这会覆盖当前的 config)
       state.apiConfig = {
         id: 'main',
+        ...window.ttsProvider.apiFields({ ...state.apiConfig, ...preset }),
         proxyUrl: preset.proxyUrl,
         apiKey: preset.apiKey,
         model: preset.model,
@@ -192,6 +194,8 @@
       couplespaceApiKey: document.getElementById('couplespace-api-key').value.trim(),
       couplespaceModel: document.getElementById('couplespace-model-input').value.trim() || document.getElementById('couplespace-model-select').value,
 
+      ...window.ttsProvider.apiFields(state.apiConfig),
+      ...window.ttsSettings.readApi(),
       minimaxGroupId: document.getElementById('minimax-group-id').value.trim(),
       minimaxApiKey: document.getElementById('minimax-api-key').value.trim(),
       minimaxModel: document.getElementById('minimax-model-select').value
@@ -237,6 +241,7 @@
   }
 
   function renderApiSettings(forcePresetId = null) {
+    window.ttsSettings.loadApi();
 
     document.getElementById('proxy-url').value = state.apiConfig.proxyUrl || '';
     document.getElementById('api-key').value = state.apiConfig.apiKey || '';

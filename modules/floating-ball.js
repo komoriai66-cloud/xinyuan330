@@ -708,6 +708,7 @@
     // 加载预设
     state.apiConfig = {
       id: 'main',
+      ...window.ttsProvider.apiFields({ ...state.apiConfig, ...preset }),
       proxyUrl: preset.proxyUrl,
       apiKey: preset.apiKey,
       model: preset.model,
@@ -757,6 +758,7 @@
       couplespaceProxyUrl: state.apiConfig.couplespaceProxyUrl || '',
       couplespaceApiKey: state.apiConfig.couplespaceApiKey || '',
       couplespaceModel: state.apiConfig.couplespaceModel || '',
+      ...window.ttsProvider.apiFields(state.apiConfig),
       minimaxGroupId: state.apiConfig.minimaxGroupId || '',
       minimaxApiKey: state.apiConfig.minimaxApiKey || '',
       minimaxModel: state.apiConfig.minimaxModel || 'speech-01'

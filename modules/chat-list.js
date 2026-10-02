@@ -11,6 +11,10 @@
   function showScreen(screenId) {
     // 检查是否从你画我猜屏幕离开
     const currentActiveScreen = document.querySelector('.screen.active');
+    if (currentActiveScreen?.id === 'font-settings-screen' && screenId !== 'font-settings-screen' && !fontLeavingAllowed) {
+      void leaveFontSettings(screenId);
+      return;
+    }
     if (currentActiveScreen && currentActiveScreen.id === 'draw-guess-screen' && screenId !== 'draw-guess-screen') {
       // 正在离开你画我猜屏幕
       if (drawGuessState.isActive && drawGuessState.partnerId && drawGuessState.history.length > 1) {
@@ -88,40 +92,7 @@
       }
     }
     if (screenId === 'font-settings-screen') {
-      loadFontPresetsDropdown();
-      document.getElementById('font-url-input').value = state.globalSettings.fontUrl || '';
-      applyCustomFont(state.globalSettings.fontUrl || '', true);
-      // 初始化本地字体 UI
-      const hasLocalFont = !!state.globalSettings.fontLocalData;
-      document.getElementById('font-local-filename').textContent = hasLocalFont ? '已加载本地字体' : '';
-      document.getElementById('font-local-clear-btn').style.display = hasLocalFont ? 'inline-block' : 'none';
-      if (hasLocalFont) {
-        document.getElementById('font-url-input').disabled = true;
-        document.getElementById('font-url-input').placeholder = '已使用本地字体，清除后可输入URL';
-      } else {
-        document.getElementById('font-url-input').disabled = false;
-        document.getElementById('font-url-input').placeholder = 'https://..../font.ttf';
-      }
-      // 初始化字体大小滑动条
-      const fontSize = state.globalSettings.globalFontSize || 16;
-      document.getElementById('font-size-slider').value = fontSize;
-      document.getElementById('font-size-value').textContent = fontSize;
-      // 初始化预览开关默认关闭
-      const previewToggle = document.getElementById('font-preview-toggle');
-      const previewContainer = document.getElementById('font-preview-container');
-      if (previewToggle && previewContainer) {
-        previewToggle.checked = false;
-        previewContainer.style.display = 'none';
-      }
-      // 初始化字体应用范围 UI
-      const scope = state.globalSettings.fontScope || { all: true };
-      const allCb = document.getElementById('font-scope-all');
-      const scopeList = document.getElementById('font-scope-list');
-      allCb.checked = !!scope.all;
-      scopeList.style.display = scope.all ? 'none' : 'flex';
-      document.querySelectorAll('#font-scope-list input[data-scope]').forEach(cb => {
-        cb.checked = scope[cb.dataset.scope] !== false;
-      });
+      openFontSettings();
     }
   }
   window.updateListenTogetherIconProxy = () => { };

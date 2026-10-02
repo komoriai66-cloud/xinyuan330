@@ -424,3 +424,63 @@
                background-color: rgba(0, 0, 0, 0.85);
                transform: scale(1.1);
            }
+
+/* Rendering workbench: additions inherit this page's existing controls and scale. */
+#rr-toolbar { flex: 0 0 auto; padding: 8px 15px 0; min-width: 0; }
+.rr-search-row, .rr-buttons, .rr-card-tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rr-search-row > input { flex: 1; min-width: 0; }
+.rr-search-row > button { flex: 0 0 auto; white-space: nowrap; }
+#rr-editor-tools { flex: 0 0 auto; min-width: 0; color: var(--text-primary); }
+#rr-editor-basic { flex: 0 0 auto; min-width: 0; }
+#rr-editor-basic select { width: 100%; min-width: 0; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color, #e5e5ea); border-radius: 8px; font-size: 13px; color: var(--text-primary, #1c1c1e); background: var(--secondary-bg, #fff); outline: none; }
+#phone-screen.dark-mode #rr-editor-basic select { background: #1c1c1e; color: var(--text-primary, #f2f2f7); border-color: #38383a; }
+#rule-editor-modal .modal-body { min-height: 0; }
+.rr-section { margin: 8px 0; border: 1px solid var(--border-color, #e5e5ea); border-radius: 8px; overflow: hidden; }
+.rr-section > summary { padding: 8px 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.rr-section-body { padding: 0 10px 10px; min-width: 0; }
+.rr-grid, .rr-check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.rr-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; margin: 8px 0; font-size: 13px; font-weight: 400; color: var(--text-secondary); }
+#rr-toolbar input, #rr-toolbar select, #rr-editor-tools input:not([type="checkbox"]), #rr-editor-tools select, #rr-editor-tools textarea {
+    width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-color, #e5e5ea); border-radius: 8px;
+    font: inherit; font-size: 13px; color: var(--text-primary, #1c1c1e); background: var(--secondary-bg, #fff); outline: none;
+}
+#rr-editor-tools textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
+#rr-toolbar input:focus, #rr-editor-tools input:focus, #rr-editor-tools textarea:focus, #rr-editor-tools select:focus { border-color: var(--accent-color, #007aff); }
+.rr-check { display: flex; align-items: flex-start; gap: 6px; margin: 7px 0; font-size: 12px; color: var(--text-secondary); min-width: 0; }
+.rr-check > input { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; flex: 0 0 16px; margin: 0; border: 1px solid var(--border-color, #c7c7cc); border-radius: 4px; background: transparent; position: relative; }
+.rr-check > input:checked { background: var(--accent-color, #007aff); border-color: var(--accent-color, #007aff); }
+.rr-check > input:checked::after { content: '✓'; position: absolute; inset: -2px 0 0; text-align: center; color: #fff; font-size: 13px; }
+.rr-help { margin: 6px 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; }
+.rr-buttons { flex-wrap: wrap; margin: 8px 0; }
+#rr-toolbar .settings-mini-btn, #rr-editor-tools .settings-mini-btn { padding: 6px 9px; font-size: 12px; font-weight: 400; max-width: 100%; }
+#rr-toolbar .settings-mini-btn:disabled { opacity: .45; cursor: default; }
+.rr-test-output, .rr-test-trace { margin: 8px 0; padding: 8px; border: 1px solid var(--border-color, #e5e5ea); border-radius: 8px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; max-width: 100%; min-width: 0; }
+.rr-test-output:empty, .rr-test-trace:empty { display: none; }
+.rr-test-trace { white-space: pre-wrap; max-height: 220px; overflow: auto; font-size: 12px; color: var(--text-secondary); }
+.rr-card-tools { margin-top: 7px; }
+.rr-card-meta { flex: 1; min-width: 0; font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr-icon-btn { flex: 0 0 auto; width: 25px; height: 25px; padding: 0; border: 1px solid var(--border-color, #e5e5ea); border-radius: 6px; font-size: 12px; color: var(--text-secondary); background: transparent; cursor: pointer; }
+.rr-icon-btn:hover { color: var(--accent-color); border-color: var(--accent-color); }
+#rules-content-container .rule-card[hidden], #rr-editor-tools [hidden] { display: none !important; }
+.rr-highlight { color: inherit; background: color-mix(in srgb, var(--rr-color, #007aff) 18%, transparent); padding: 0 2px; }
+.rr-badge { display: inline-block; padding: 1px 5px; color: var(--rr-color, #007aff); border: 1px solid currentColor; vertical-align: baseline; }
+.rr-note, .rr-quote { margin: 6px 0; padding: 8px; border-left: 2px solid var(--rr-color, var(--accent-color, #007aff)); background: color-mix(in srgb, var(--rr-color, #007aff) 6%, transparent); }
+.rr-fold, .rr-mask { margin: 4px 0; padding: 6px 8px; border: 1px solid var(--border-color, #e5e5ea); border-radius: 8px; }
+.rr-fold > summary, .rr-mask > summary { cursor: pointer; color: var(--text-secondary); font-size: .9em; }
+.rr-fold > div { margin-top: 6px; }
+.rr-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px; margin: 6px 0; padding: 8px; border: 1px solid var(--border-color, #e5e5ea); border-radius: 8px; }
+.rr-card dt { color: var(--text-secondary); }
+.rr-card dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.rr-table-wrap { max-width: 100%; overflow-x: auto; }
+.rr-table { width: 100%; border-collapse: collapse; font-size: inherit; }
+.rr-table th, .rr-table td { padding: 5px; border: 1px solid var(--border-color, #e5e5ea); text-align: left; overflow-wrap: anywhere; }
+.rr-table th { font-weight: 500; color: var(--text-secondary); }
+#phone-screen.dark-mode #rr-toolbar input, #phone-screen.dark-mode #rr-toolbar select,
+#phone-screen.dark-mode #rr-editor-tools input:not([type="checkbox"]), #phone-screen.dark-mode #rr-editor-tools select, #phone-screen.dark-mode #rr-editor-tools textarea { background: #1c1c1e; color: var(--text-primary, #f2f2f7); border-color: #38383a; }
+@media (max-width: 360px) {
+    #rr-toolbar { padding-left: 10px; padding-right: 10px; }
+    .rr-grid { gap: 6px; }
+    #rr-toolbar .settings-mini-btn, #rr-editor-tools .settings-mini-btn { padding: 5px 7px; }
+    .rr-card-tools { gap: 4px; }
+    .rr-icon-btn { width: 23px; height: 25px; }
+}

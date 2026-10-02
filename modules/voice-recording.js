@@ -16,7 +16,9 @@
   }
 
   function getActiveChat() {
-    return state.activeChatId ? state.chats[state.activeChatId] : null;
+    // 主程序在 DOMContentLoaded 中暴露状态，本模块可能更早执行。
+    const appState = window.state;
+    return appState?.activeChatId ? appState.chats?.[appState.activeChatId] || null : null;
   }
 
   function getUnderstandingMode(chat, forCall) {
@@ -29,10 +31,11 @@
   }
 
   function resolveAutomaticMode(chat) {
-    const proxyUrl = String(state.apiConfig?.proxyUrl || '').replace(/\/+$/, '');
+    const apiConfig = window.state?.apiConfig;
+    const proxyUrl = String(apiConfig?.proxyUrl || '').replace(/\/+$/, '');
     const configuredGeminiUrl = typeof GEMINI_API_URL !== 'undefined' ? GEMINI_API_URL : window.GEMINI_API_URL;
     const geminiUrl = String(configuredGeminiUrl || '').replace(/\/+$/, '');
-    if (proxyUrl && proxyUrl === geminiUrl && state.apiConfig?.apiKey) return 'gemini';
+    if (proxyUrl && proxyUrl === geminiUrl && apiConfig?.apiKey) return 'gemini';
     if (chat?.settings?.voiceTranscriptionUrl) return 'transcription';
     return 'none';
   }
@@ -335,7 +338,7 @@
     form.append('file', wavBlob, audioFilename(wavBlob));
     form.append('model', chat.settings?.voiceTranscriptionModel || 'whisper-1');
     form.append('language', 'zh');
-    const configuredKey = chat.settings?.voiceTranscriptionKey || state.apiConfig?.apiKey || '';
+    const configuredKey = chat.settings?.voiceTranscriptionKey || window.state?.apiConfig?.apiKey || '';
     const apiKey = typeof getRandomValue === 'function' ? getRandomValue(configuredKey) : configuredKey;
     const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
     const response = await fetch(url, { method: 'POST', headers, body: form });
@@ -354,10 +357,11 @@
   }
 
   async function understandWithGemini(blob) {
-    const apiKeyValue = state.apiConfig?.apiKey || '';
+    const apiConfig = window.state?.apiConfig;
+    const apiKeyValue = apiConfig?.apiKey || '';
     const apiKey = typeof getRandomValue === 'function' ? getRandomValue(apiKeyValue) : apiKeyValue;
     if (!apiKey) throw new Error('尚未配置 Gemini API Key');
-    const model = state.apiConfig?.model;
+    const model = apiConfig?.model;
     if (!model) throw new Error('尚未选择 Gemini 模型');
     const wavBlob = await normalizeToWav(blob);
     const dataUrl = await blobToDataUrl(wavBlob);
@@ -451,7 +455,8 @@
   }
 
   async function saveChatRecording(recording) {
-    const chat = state.chats[recording.chatId || state.activeChatId] || getActiveChat();
+    const appState = window.state;
+    const chat = appState?.chats?.[recording.chatId || appState?.activeChatId] || getActiveChat();
     if (!chat) return;
     notify('正在处理真实语音…');
     const result = await processClip(recording, chat, false);
@@ -493,7 +498,8 @@
   }
 
   async function prepareCallResult(recording) {
-    const chat = state.chats[recording.chatId || state.activeChatId] || getActiveChat();
+    const appState = window.state;
+    const chat = appState?.chats?.[recording.chatId || appState?.activeChatId] || getActiveChat();
     if (!chat) return null;
     notify('正在理解你的通话语音…');
     const result = await processClip(recording, chat, true);

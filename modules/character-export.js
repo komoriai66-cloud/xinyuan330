@@ -512,7 +512,12 @@
           for (const msg of chat.history) {
             const role = msg.role === 'user' ? '我' : chat.name;
             const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '';
-            txtContent += `${role} [${time}]\n${msg.content}\n\n`;
+            let exportContent = msg.content;
+            if (typeof exportContent === 'string' && window.applyRenderingRulesForStage) {
+              const result = await window.applyRenderingRulesForStage(exportContent, chat.id, { messageId: msg.id ?? msg.timestamp, timestamp: msg.timestamp, role: msg.role, type: msg.type, field: 'content', isGroup: !!chat.isGroup }, 'export');
+              exportContent = result.content;
+            }
+            txtContent += `${role} [${time}]\n${exportContent}\n\n`;
           }
         } else {
           txtContent += "暂无聊天记录。\n";

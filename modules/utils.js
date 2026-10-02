@@ -124,6 +124,7 @@ function getMemoryContextForPrompt(chat, options = {}) {
   }
   
   // 日记模式（默认）
+  if (window.normalMemoryManager) return window.normalMemoryManager.serialize(chat, options);
   if (!chat.longTermMemory || chat.longTermMemory.length === 0) {
     return '- (暂无)';
   }

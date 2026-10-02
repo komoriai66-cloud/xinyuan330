@@ -241,7 +241,10 @@
               stroke-linejoin="round">
               <path d="M20 11A8.1 8.1 0 0 0 4.5 9M4 5v4h4"></path>
               <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
-            </svg> </button> <button id="propel-btn" class="chat-action-icon-btn action-button" title="推进剧情" style="display: flex;"> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            </svg> </button>
+            <button id="generation-adjustments-btn" type="button" class="chat-action-icon-btn action-button" title="带意向重新生成" aria-label="带意向重新生成"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
+            <button id="model-communication-btn" type="button" class="chat-action-icon-btn action-button" title="和模型聊聊" aria-label="和模型聊聊"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 1-8 8H5l-3 3V11a9 9 0 0 1 18 0Z"/><path d="M7 10h10M7 14h6"/></svg></button>
+            <button id="propel-btn" class="chat-action-icon-btn action-button" title="推进剧情" style="display: flex;"> <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
               stroke-linejoin="round">
               <polygon points="13 19 22 12 13 5 13 19"></polygon>
               <polygon points="2 19 11 12 2 5 2 19"></polygon>
@@ -347,6 +350,7 @@
         <div class="music-player-window">
           <div class="music-player-top-actions">
             <div class="top-left-cluster"> <button id="music-return-btn">‹</button> <button id="music-exit-btn">×</button> </div>
+            <button id="music-sync-btn" type="button" aria-haspopup="dialog" aria-pressed="false" title="多人同步">多人同步</button>
             <div style="display: flex; align-items: center; gap: 15px;"> <button id="toggle-fullscreen-btn" title="切换全屏"> <svg class="icon-maximize" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
                 </svg> <svg class="icon-minimize" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -407,6 +411,31 @@
               </button>
               <button id="toggle-blur-btn" class="secondary-control-btn text-btn" title="切换背景清晰度">清</button>
             </div>
+          </div>
+        </div>
+      </div>
+      <div id="music-sync-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="music-sync-title">
+        <div class="modal-content music-sync-content">
+          <div class="modal-header"><span id="music-sync-title">多人同步</span></div>
+          <div class="modal-body">
+            <div class="music-sync-toggle-row">
+              <span id="music-sync-toggle-label">开启多人同步</span>
+              <label class="toggle-switch"><input id="music-sync-enabled" type="checkbox" aria-labelledby="music-sync-toggle-label"><span class="slider"></span></label>
+            </div>
+            <p class="music-sync-description">开启后，选中的角色会像单独一起听时一样感知音乐。</p>
+            <div id="music-sync-options" hidden>
+              <div class="music-sync-selection-actions">
+                <span id="music-sync-count">已选 0 位</span>
+                <button id="music-sync-select-all" type="button">全选</button>
+                <button id="music-sync-clear-all" type="button">取消全选</button>
+              </div>
+              <div id="music-sync-role-list"></div>
+            </div>
+            <div id="music-sync-status" role="status" aria-live="polite"></div>
+          </div>
+          <div class="modal-footer">
+            <button id="music-sync-cancel-btn" class="cancel" type="button">取消</button>
+            <button id="music-sync-apply-btn" class="save" type="button">应用</button>
           </div>
         </div>
       </div>

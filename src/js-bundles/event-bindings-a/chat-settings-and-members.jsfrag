@@ -523,6 +523,10 @@
     document.getElementById('save-chat-settings-btn').addEventListener('click', async () => {
       if (!state.activeChatId) return;
       const chat = state.chats[state.activeChatId];
+      if (!chat.isGroup) {
+        try { window.ttsSettings.validateChat(); }
+        catch (error) { await showCustomAlert('语音设置未完成', String(error.message).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])); return; }
+      }
       const shouldOpenPetSetup = !chat.isGroup
         && !chat.settings.enableSharedPet
         && document.getElementById('shared-pet-switch').checked
@@ -548,11 +552,8 @@
           document.getElementById('shared-pet-switch').checked
         );
       }
-      if (!chat.isGroup && newName !== chat.name) {
-        if (!chat.nameHistory) chat.nameHistory = [];
-        if (!chat.nameHistory.includes(chat.name)) chat.nameHistory.push(chat.name);
-      }
-      chat.name = newName;
+      const remarkChangeMessage = chat.isGroup ? null : window.RemarkNames.recordChange(chat, newName, 'user');
+      if (chat.isGroup) chat.name = newName;
 
       // 保存角色国籍
       const selectedCountry = document.getElementById('character-country-select').value;
@@ -798,7 +799,7 @@
             day: isNaN(bDay) ? null : bDay
         };
         
-        chat.settings.minimaxVoiceId = document.getElementById('ai-voice-id-input').value.trim();
+        window.ttsSettings.saveChat(chat);
 
         chat.settings.ttsLanguage = document.getElementById('ai-voice-lang-select').value;
         chat.settings.showSeconds = document.getElementById('chat-show-seconds-switch').checked;
@@ -833,6 +834,7 @@
       }
 
       await db.chats.put(chat);
+      if (remarkChangeMessage) appendMessage(remarkChangeMessage, chat);
       if (!chat.isGroup) {
         await syncCharacterNameInGroups(chat);
         await syncCharacterAvatarInGroups(chat);

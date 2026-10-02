@@ -68,9 +68,8 @@
 
 
 
-    if (state.globalSettings && (state.globalSettings.fontUrl || (state.globalSettings.globalFontSize && state.globalSettings.globalFontSize !== 16))) {
-      applyCustomFont(state.globalSettings.fontUrl || '');
-    }
+    // 完整恢复字体设置，包含本地字体、默认字号和区域范围。
+    if (state.globalSettings) void applyCustomFont(state.globalSettings.fontUrl || '');
 
     updateClock();
     if (window._clockTimer) clearInterval(window._clockTimer);
@@ -637,6 +636,7 @@
     document.getElementById('transfer-confirm-btn').addEventListener('click', sendUserTransfer);
 
     document.getElementById('listen-together-btn').addEventListener('click', handleListenTogetherClick);
+    document.getElementById('music-sync-btn')?.addEventListener('click', openMusicSyncSettings);
     document.getElementById('music-exit-btn').addEventListener('click', () => endListenTogetherSession(true));
     document.getElementById('music-return-btn').addEventListener('click', returnToChat);
     document.getElementById('music-play-pause-btn').addEventListener('click', togglePlayPause);
@@ -732,16 +732,19 @@
       // 4. 手动添加一条“自动换歌”的系统提示
       const track = musicState.playlist[musicState.currentIndex];
       if (track && musicState.isActive && musicState.activeChatId) {
-        const chat = state.chats[musicState.activeChatId];
-        if (chat) {
-          const systemMessage = {
-            role: 'system',
-            content: `[系统提示：上一首歌曲播放完毕，已自动为你切换到《${track.name}》 - ${track.artist}]`,
-            timestamp: Date.now(),
-            isHidden: true // 这条消息用户看不见，但AI在下次回复时会读到
-          };
-          chat.history.push(systemMessage);
-          await db.chats.put(chat); // 异步保存到数据库
+        const chatIds = musicState.multiSyncEnabled ? musicState.syncedChatIds : [musicState.activeChatId];
+        for (const chatId of [...new Set(chatIds || [])]) {
+          const chat = state.chats[chatId];
+          if (chat) {
+            const systemMessage = {
+              role: 'system',
+              content: `[系统提示：上一首歌曲播放完毕，已自动为你切换到《${track.name}》 - ${track.artist}]`,
+              timestamp: Date.now(),
+              isHidden: true // 这条消息用户看不见，但AI在下次回复时会读到
+            };
+            chat.history.push(systemMessage);
+            await db.chats.put(chat); // 异步保存到数据库
+          }
         }
       }
     });
@@ -811,7 +814,7 @@
       cancelReplyMode();
       document.body.classList.remove('chat-actions-expanded');
     });
-    document.getElementById('wait-reply-btn').addEventListener('click', triggerAiResponse);
+    document.getElementById('wait-reply-btn').addEventListener('click', () => triggerAiResponse({ manual: true }));
     chatInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();

@@ -12,6 +12,24 @@ function renderVectorMemoryView() {
 }
 
 function bindVectorMemoryEvents(chat, container) {
+  const mutationSelectors = '#vm-add-fragment-btn, #vm-add-core-btn, #vm-import-btn, #vm-batch-delete-btn, #vm-batch-shift-time-btn, #vm-batch-undo-time-btn, .vm-edit-core-btn, .vm-delete-core-btn, .vm-pin-btn, .vm-edit-frag-btn, .vm-delete-frag-btn';
+  if (container._vmMutationGuard) container.removeEventListener('click', container._vmMutationGuard, true);
+  container._vmMutationGuard = event => {
+    if (window.vectorMemoryManager._extractionLocks.get(chat) && event.target.closest(mutationSelectors)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showToast('正在提取，请结束当前任务后修改记忆', 'info');
+    }
+  };
+  container.addEventListener('click', container._vmMutationGuard, true);
+  container.querySelectorAll('[data-vm-task-action]').forEach(button => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try { await controlVectorExtraction(chat, button.dataset.vmTaskAction); }
+      catch (error) { showToast(error.message, 'error'); }
+      finally { button.disabled = false; }
+    });
+  });
   // ===== 批量操作状态 =====
   let vmBatchMode = false;
   let vmSelectedItems = []; // [{type: 'core'|'fragment', id}]
@@ -57,6 +75,27 @@ function bindVectorMemoryEvents(chat, container) {
   if (batchCancelBtn) {
     batchCancelBtn.addEventListener('click', () => vmToggleBatchMode(false));
   }
+
+  // 日期调整（原有批量操作保留）
+  container.querySelector('#vm-batch-shift-time-btn')?.addEventListener('click', async () => {
+    if (!vmSelectedItems.length) { showToast('请先选择记忆', 'info'); return; }
+    const value = await showCustomPrompt('平移记忆日期', '输入整数天数：正数向后，负数向前；日期不明的记忆跳过。', '0');
+    if (value === null) return;
+    const days = Number(value);
+    if (!Number.isInteger(days) || !String(value).trim()) { showToast('请填写整数天数', 'error'); return; }
+    const selected = vmSelectedItems.map(item => item.id);
+    if (!await showCustomConfirm('平移日期', `选中的 ${selected.length} 条记忆中，有日期的条目将${days >= 0 ? '向后' : '向前'}移动 ${Math.abs(days)} 天。可撤销本次调整。`)) return;
+    try { await window.MemoryWorldTime.shiftDates(chat, selected, days); renderVectorMemoryView(); showToast('日期已调整，可在批量菜单撤销', 'success'); }
+    catch (error) { showToast(error.message, 'error'); }
+  });
+  container.querySelector('#vm-batch-undo-time-btn')?.addEventListener('click', async () => {
+    try { await window.MemoryWorldTime.shiftDates(chat, [], 0, true); renderVectorMemoryView(); showToast('已撤销上次日期调整', 'success'); }
+    catch (error) { showToast(error.message, 'error'); }
+  });
+  container.querySelectorAll('.vm-time-source-btn').forEach(button => button.addEventListener('click', () => {
+    const fragment = window.vectorMemoryManager.getFragment(chat, button.dataset.id);
+    if (fragment) window.MemoryWorldTimeUI.detail(chat, fragment);
+  }));
 
   // 全选
   const batchSelectAllBtn = container.querySelector('#vm-batch-select-all-btn');
@@ -137,12 +176,24 @@ function bindVectorMemoryEvents(chat, container) {
   container.querySelectorAll('.vm-time-picker').forEach(picker => {
     picker.addEventListener('change', async (e) => {
       const id = picker.dataset.id;
+      if (window.vectorMemoryManager._extractionLocks.get(chat)) { showToast('正在提取，请结束当前任务后修改日期', 'info'); renderVectorMemoryView(); return; }
       const newTimeStr = e.target.value;
       if (!newTimeStr) return;
       
-      const newTime = new Date(newTimeStr).getTime();
-      window.vectorMemoryManager.editFragment(chat, id, { memoryTime: newTime });
-      await db.chats.put(chat);
+      const fragment = window.vectorMemoryManager.getFragment(chat, id);
+      let newTime;
+      try { newTime = fragment?.memoryTimeZone && window.MemoryWorldTime
+        ? window.MemoryWorldTime.parseInput(newTimeStr, fragment.memoryTimeZone)
+        : new Date(picker.type === 'date' ? newTimeStr + 'T12:00' : newTimeStr).getTime(); }
+      catch (error) { showToast(error.message, 'error'); renderVectorMemoryView(); return; }
+      if (!Number.isFinite(newTime)) { showToast('请输入有效日期', 'error'); return; }
+      const before = fragment?.clockVersion ? JSON.parse(JSON.stringify(fragment)) : null;
+      window.vectorMemoryManager.editFragment(chat, id, { memoryTime: newTime, timePrecision: picker.type === 'date' ? 'day' : 'minute' });
+      try { await db.chats.put(chat); }
+      catch (error) {
+        if (before) { Object.keys(fragment).forEach(key => delete fragment[key]); Object.assign(fragment, before); }
+        showToast('日期保存失败，请重试', 'error'); renderVectorMemoryView(); return;
+      }
       showToast('记忆时间已更新', 'success');
       // 重新渲染以排序
       renderVectorMemoryView();
@@ -187,6 +238,7 @@ function bindVectorMemoryEvents(chat, container) {
       const tags = await showCustomPrompt('添加标签', '输入关键词标签（逗号分隔）：', '');
       const tagArr = tags ? tags.split(/[,，]/).map(t => t.trim()).filter(Boolean) : [];
       const draft = {
+        ...(window.MemoryWorldTime?.manualData(chat) || {}),
         content: content.trim(),
         tags: tagArr,
         sourceLanguage: window.vectorMemoryManager.detectLanguage(content),
@@ -271,11 +323,13 @@ function bindVectorMemoryEvents(chat, container) {
           if (!importMode) return;
           showToast('正在导入...', 'info');
           const backup = JSON.parse(JSON.stringify(chat.variableMemory || null));
+          const timeConfigBackup = chat.settings.memoryTime ? JSON.parse(JSON.stringify(chat.settings.memoryTime)) : undefined;
           const count = await window.vectorMemoryManager.importMemory(chat, text, importMode);
           try {
             await db.chats.put(chat);
           } catch (error) {
             chat.variableMemory = backup;
+            if (timeConfigBackup === undefined) delete chat.settings.memoryTime; else chat.settings.memoryTime = timeConfigBackup;
             throw error;
           }
           renderVectorMemoryView();
@@ -390,6 +444,7 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
     </div>
   `;
   document.body.appendChild(panel);
+  window.MemoryWorldTimeUI?.bind(panel.querySelector('.memory-time-settings'), chat);
   let metadataEnrichmentRunning = false;
   const savePanelSettings = () => {
     try {
@@ -423,6 +478,10 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
   });
 
   // 绑定checkbox联动
+  const extractionBatchCb = panel.querySelector('#vm-extraction-batch');
+  extractionBatchCb?.addEventListener('change', () => {
+    panel.querySelector('#vm-extraction-batch-fields').style.display = extractionBatchCb.checked ? 'block' : 'none';
+  });
   const customEmbeddingCb = panel.querySelector('#vm-custom-embedding');
   if (customEmbeddingCb) {
     customEmbeddingCb.addEventListener('change', () => {
@@ -691,6 +750,12 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
       if (!rows.length) {
         diagnosticResults.textContent = '没有可供测试的普通记忆。';
       } else {
+        if (!rows.some(row => row.matched)) {
+          const note = document.createElement('div');
+          note.className = 'vm-setting-help';
+          note.textContent = '记忆已保存，但这句话没有命中；可以查看下面的内容和检索分数。';
+          diagnosticResults.appendChild(note);
+        }
         rows.forEach((row, index) => {
           const item = document.createElement('div');
           item.className = `vm-diagnostic-item${row.matched ? ' matched' : ''}`;
@@ -727,7 +792,7 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
       await db.chats.put(chat);
       panel.remove();
       renderVectorMemoryView();
-      showToast(`设置已保存：每 ${vm.settings.autoExtractionMsgInterval} 条新消息自动提取一次`, 'success');
+      showToast(`设置已保存：间隔${vm.settings.autoExtractionMsgInterval}条，${vm.settings.extractionBatchEnabled ? `每批${vm.settings.extractionBatchSize}条` : '不分批'}`, 'success');
     });
   }
   

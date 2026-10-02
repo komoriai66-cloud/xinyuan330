@@ -51,6 +51,7 @@
       exportedAt: new Date().toISOString(),
       sourceChat: { id: chat.id, name: chat.name, originalName: chat.originalName || '', isGroup: !!chat.isGroup },
       memoryType: kind,
+      normalMemory: (kind === 'original' || kind === 'all') ? window.normalMemoryManager?.transfer(chat) : undefined,
       data: payloadFor(chat, kind)
     };
   }
@@ -63,12 +64,13 @@
         const stamp = Number.isFinite(Number(item.timestamp)) ? new Date(Number(item.timestamp)).toLocaleString('zh-CN') : '时间未知';
         return `${index + 1}. [${stamp}]\n${item.content || ''}`;
       });
-      return head + (rows.length ? rows.join('\n\n────────────────────\n\n') : '暂无记忆');
+      const overview = window.normalMemoryManager?.active(chat) || [];
+      return head + (rows.length ? rows.join('\n\n────────────────────\n\n') : '暂无记忆') + (overview.length ? '\n\n【当前普通记忆概况】\n' + overview.map(e => `[${window.normalMemoryManager.labels[e.status]}] ${e.text}`).join('\n\n') : '');
     }
     if (kind === 'structured') return head + (window.structuredMemoryManager.serializeForPrompt(chat) || '暂无记忆');
     if (kind === 'vector') {
       const vm = window.vectorMemoryManager.getVariableMemory(chat);
-      const rows = (vm.fragments || []).map((item, index) => `${index + 1}. [${new Date(item.memoryTime || item.createdAt || Date.now()).toLocaleString('zh-CN')}] [${item.category || 'E'}]\n${item.content || ''}`);
+      const rows = (vm.fragments || []).map((item, index) => `${index + 1}. [${window.MemoryExtractionSupport.formatTime(item)}] [${item.category || 'E'}]\n${item.content || ''}`);
       return head + (rows.length ? rows.join('\n\n────────────────────\n\n') : '暂无记忆');
     }
     return head + ['original', 'structured', 'vector'].map(type => `【${type}】\n${readingText(chat, type).split('\n\n').slice(3).join('\n\n')}`).join('\n\n====================\n\n');
@@ -121,6 +123,7 @@
       await applyOne('structured', imported.data.structured);
       await applyOne('vector', imported.data.vector);
     } else await applyOne(imported.memoryType, imported.data);
+    if (imported.memoryType === 'all' || imported.memoryType === 'original') window.normalMemoryManager?.importState(chat, imported.normalMemory, mode);
     return count;
   }
 
@@ -133,11 +136,14 @@
       { text: `替换“${targetName}”的对应记忆${source}`, value: 'replace' }
     ]);
     if (!mode) return;
+    if (window.vectorMemoryManager?._extractionLocks.get(chat)) throw new Error('正在提取，请结束当前任务后导入记忆');
+    if (window.normalMemoryManager?.locks.has(chat)) throw new Error('正在梳理普通记忆，请暂停后再导入');
     const backup = {
       longTermMemory: clone(chat.longTermMemory), structuredMemory: clone(chat.structuredMemory),
       variableMemory: clone(chat.variableMemory), vectorMemory: clone(chat.vectorMemory),
       lastMemorySummaryTimestamp: chat.lastMemorySummaryTimestamp,
-      lastStructuredMemoryTimestamp: chat.lastStructuredMemoryTimestamp
+      lastStructuredMemoryTimestamp: chat.lastStructuredMemoryTimestamp,
+      normalMemory: clone(chat.normalMemory)
     };
     try {
       const count = await applyImport(chat, imported, mode);
@@ -153,6 +159,7 @@
       chat.vectorMemory = backup.vectorMemory;
       chat.lastMemorySummaryTimestamp = backup.lastMemorySummaryTimestamp;
       chat.lastStructuredMemoryTimestamp = backup.lastStructuredMemoryTimestamp;
+      chat.normalMemory = backup.normalMemory;
       throw error;
     }
   }

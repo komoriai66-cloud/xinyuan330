@@ -779,3 +779,14 @@
 .dark-mode .vm-item-row.selected {
   background: rgba(10, 132, 255, 0.1);
 }
+
+/* 提取设置和任务反馈延续本页的辅助文字、按钮样式。 */
+.vm-setting-help { font-size: 11px; color: var(--text-secondary, #888); margin-top: 4px; line-height: 1.5; }
+.vm-extraction-status { margin: 0 0 12px; font-size: 11px; color: var(--text-secondary, #888); line-height: 1.6; min-width: 0; }
+.vm-extraction-description { overflow-wrap: anywhere; min-width: 0; }
+.vm-extraction-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.vm-extraction-actions .vm-toolbar-btn { max-width: 100%; }
+.vm-settings-panel #vm-extraction-batch-fields { margin-top: 8px; }
+.vm-settings-panel #vm-extraction-detail { max-width: 100%; min-width: 0; }
+.vm-item-meta .vm-time-picker { max-width: 100%; min-width: 0; }
+.vm-extraction-status .vm-meta-tag, .vm-item-meta .vm-meta-tag { overflow-wrap: anywhere; max-width: 100%; box-sizing: border-box; }

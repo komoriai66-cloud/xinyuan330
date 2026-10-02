@@ -27,6 +27,8 @@
         && document.querySelector(`.message-bubble[data-timestamp="${timestamp}"] .voice-message-body[data-text]`)
         ? 'flex' : 'none';
     }
+    const regenerateAiVoiceBtn = document.getElementById('regenerate-ai-voice-btn');
+    if (regenerateAiVoiceBtn) regenerateAiVoiceBtn.style.display = downloadAiVoiceBtn?.style.display || 'none';
     const viewThoughtChainBtn = document.getElementById('view-thought-chain-btn');
     if (viewThoughtChainBtn) {
         let foundHiddenThought = false;
@@ -69,6 +71,11 @@
     if (timestamp && typeof window.downloadAiVoiceMessage === 'function') {
       window.downloadAiVoiceMessage(chatId, timestamp);
     }
+  });
+  document.getElementById('regenerate-ai-voice-btn')?.addEventListener('click', () => {
+    const timestamp = activeMessageTimestamp, chatId = state.activeChatId;
+    hideMessageActions();
+    if (timestamp) window.regenerateAiVoiceMessage?.(chatId, timestamp);
   });
 
   // ========== 排除/恢复消息 (省Token) ==========
@@ -526,6 +533,10 @@
     }
 
     try {
+      if (window.applyRenderingRulesForStage) {
+        const result = await window.applyRenderingRulesForStage(textToCopy, chat.id, { messageId: message.id ?? message.timestamp, timestamp: message.timestamp, role: message.role, type: message.type, field: 'content', isGroup: !!chat.isGroup }, 'copy');
+        textToCopy = result.content;
+      }
       await navigator.clipboard.writeText(textToCopy);
       await showCustomAlert('复制成功', '消息内容已复制到剪贴板。');
     } catch (err) {

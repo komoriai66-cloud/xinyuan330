@@ -731,6 +731,7 @@ ${getActiveThoughtsPrompt()}
           systemPrompt = processPromptWithSettings(systemPrompt, 'single');
 
           messagesPayload = filteredHistory.map(msg => {
+            if (window.RemarkNames.getEvent(msg, chat)) return null;
             // 处理系统消息（旁白和系统通知）
             if (msg.role === 'system' && !msg.isHidden) {
               if (msg.type === 'narration') {

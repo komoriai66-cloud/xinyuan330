@@ -154,27 +154,173 @@
   }
 
   // 来源：script.js 第 32842~32868 行
-  async function addMusicActionSystemMessage(actionText) {
+  function getMusicAwareChatIds() {
+    if (!musicState.isActive) return [];
+    const ids = musicState.multiSyncEnabled ? (musicState.syncedChatIds || []) : [musicState.activeChatId];
+    return [...new Set(ids)].filter(id => !!state.chats[id]);
+  }
 
-    if (!musicState.isActive || !musicState.activeChatId) return;
-    const chat = state.chats[musicState.activeChatId];
-    if (!chat) return;
+  function isMusicAwareChat(chatId) {
+    return getMusicAwareChatIds().includes(chatId);
+  }
 
+  function getMusicElapsedTime(chatId) {
+    if (chatId === musicState.activeChatId) return musicState.totalElapsedTime;
+    return musicState.syncedElapsedTimes?.[chatId] ?? state.chats[chatId]?.musicData?.totalTime ?? 0;
+  }
 
-    const myNickname = chat.isGroup ? (chat.settings.myNickname || '我') : '我';
-    const fullMessage = `[系统提示：用户 (${myNickname}) ${actionText}]`;
+  async function saveMusicSyncTimes() {
+    for (const id of getMusicAwareChatIds()) {
+      if (id === musicState.activeChatId) continue;
+      const chat = state.chats[id];
+      chat.musicData = chat.musicData || { totalTime: 0 };
+      chat.musicData.totalTime = getMusicElapsedTime(id);
+      await db.chats.put(chat);
+    }
+  }
 
+  let musicSyncDraft = null;
 
-    const systemMessage = {
-      role: 'system',
-      content: fullMessage,
-      timestamp: Date.now(),
-      isHidden: true
+  function closeMusicSyncSettings() {
+    const modal = document.getElementById('music-sync-modal');
+    if (!modal) return;
+    modal.classList.remove('visible');
+    musicSyncDraft = null;
+    document.getElementById('music-sync-btn')?.focus();
+  }
+
+  function renderMusicSyncSettings() {
+    if (!musicSyncDraft) return;
+    const enabled = musicSyncDraft.enabled;
+    document.getElementById('music-sync-enabled').checked = enabled;
+    document.getElementById('music-sync-options').hidden = !enabled;
+    const list = document.getElementById('music-sync-role-list');
+    list.replaceChildren();
+    const chats = Object.values(state.chats).filter(chat => !chat.isGroup || chat.id === musicState.activeChatId);
+    for (const chat of chats) {
+      const row = document.createElement('label');
+      row.className = 'music-sync-role';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = chat.id;
+      input.checked = musicSyncDraft.ids.has(chat.id);
+      const avatar = document.createElement('img');
+      avatar.src = chat.settings?.aiAvatar || defaultAvatar;
+      avatar.alt = '';
+      const name = document.createElement('span');
+      name.textContent = chat.name || chat.originalName || '角色';
+      name.title = name.textContent;
+      row.append(input, avatar, name);
+      list.appendChild(row);
+    }
+    document.getElementById('music-sync-count').textContent = `已选 ${chats.filter(chat => musicSyncDraft.ids.has(chat.id)).length} 位`;
+    document.getElementById('music-sync-status').textContent = '';
+  }
+
+  async function applyMusicSyncSettings() {
+    if (!musicSyncDraft || !musicState.isActive) return;
+    const ids = [...musicSyncDraft.ids].filter(id => !!state.chats[id]);
+    if (musicSyncDraft.enabled && !ids.length) {
+      document.getElementById('music-sync-status').textContent = '请至少选择一个角色';
+      return;
+    }
+    const ownerId = musicState.activeChatId;
+    const draft = musicSyncDraft;
+    const enabled = draft.enabled;
+    const controls = document.getElementById('music-sync-modal').querySelectorAll('input, button');
+    controls.forEach(control => { control.disabled = true; });
+    try {
+      if (musicState.multiSyncEnabled) await saveMusicSyncTimes();
+      if (!musicState.isActive || musicState.activeChatId !== ownerId || musicSyncDraft !== draft) return;
+      const elapsedTimes = musicState.syncedElapsedTimes || {};
+      for (const id of ids) {
+        if (id !== ownerId && elapsedTimes[id] === undefined) {
+          elapsedTimes[id] = state.chats[id].musicData?.totalTime || 0;
+        }
+      }
+      musicState.syncedElapsedTimes = elapsedTimes;
+      musicState.syncedChatIds = ids;
+      musicState.multiSyncEnabled = enabled;
+      const syncBtn = document.getElementById('music-sync-btn');
+      syncBtn.classList.toggle('active', enabled);
+      syncBtn.setAttribute('aria-pressed', String(enabled));
+      syncBtn.title = enabled ? `多人同步：${ids.length} 位角色` : '多人同步';
+      updatePlayerUI();
+      closeMusicSyncSettings();
+    } catch (error) {
+      console.error('[音乐同步] 保存失败:', error);
+      document.getElementById('music-sync-status').textContent = '保存失败，请重试';
+    } finally {
+      controls.forEach(control => { control.disabled = false; });
+    }
+  }
+
+  function openMusicSyncSettings() {
+    if (!musicState.isActive) return;
+    const modal = document.getElementById('music-sync-modal');
+    if (!modal) return;
+    if (!modal.dataset.bound) {
+      modal.dataset.bound = 'true';
+      document.getElementById('music-sync-enabled').addEventListener('change', e => {
+        if (!musicSyncDraft) return;
+        musicSyncDraft.enabled = e.target.checked;
+        renderMusicSyncSettings();
+      });
+      document.getElementById('music-sync-role-list').addEventListener('change', e => {
+        if (!musicSyncDraft || e.target.type !== 'checkbox') return;
+        if (e.target.checked) musicSyncDraft.ids.add(e.target.value);
+        else musicSyncDraft.ids.delete(e.target.value);
+        document.getElementById('music-sync-count').textContent = `已选 ${[...musicSyncDraft.ids].filter(id => !!state.chats[id]).length} 位`;
+        document.getElementById('music-sync-status').textContent = '';
+      });
+      document.getElementById('music-sync-select-all').addEventListener('click', () => {
+        if (!musicSyncDraft?.enabled) return;
+        musicSyncDraft.ids = new Set(Object.values(state.chats)
+          .filter(chat => !chat.isGroup || chat.id === musicState.activeChatId).map(chat => chat.id));
+        renderMusicSyncSettings();
+      });
+      document.getElementById('music-sync-clear-all').addEventListener('click', () => {
+        if (!musicSyncDraft?.enabled) return;
+        musicSyncDraft.ids.clear();
+        renderMusicSyncSettings();
+      });
+      document.getElementById('music-sync-cancel-btn').addEventListener('click', closeMusicSyncSettings);
+      document.getElementById('music-sync-apply-btn').addEventListener('click', applyMusicSyncSettings);
+      modal.addEventListener('click', e => { if (e.target === modal) closeMusicSyncSettings(); });
+      modal.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { e.preventDefault(); closeMusicSyncSettings(); }
+      });
+    }
+    musicSyncDraft = {
+      enabled: !!musicState.multiSyncEnabled,
+      ids: new Set(musicState.syncedChatIds || [musicState.activeChatId])
     };
+    renderMusicSyncSettings();
+    modal.classList.add('visible');
+    document.getElementById('music-sync-enabled').focus();
+  }
+
+  async function addMusicActionSystemMessage(actionText, isUserAction = true) {
+
+    for (const chatId of getMusicAwareChatIds()) {
+      const chat = state.chats[chatId];
 
 
-    chat.history.push(systemMessage);
-    await db.chats.put(chat);
+      const myNickname = chat.isGroup ? (chat.settings.myNickname || '我') : '我';
+      const fullMessage = isUserAction ? `[系统提示：用户 (${myNickname}) ${actionText}]` : `[系统提示：${actionText}]`;
+
+
+      const systemMessage = {
+        role: 'system',
+        content: fullMessage,
+        timestamp: Date.now(),
+        isHidden: true
+      };
+
+
+      chat.history.push(systemMessage);
+      await db.chats.put(chat);
+    }
   }
 
   // ========== 主要音乐播放器功能（来自 script.js 第 19473~20210 行） ==========
@@ -186,7 +332,7 @@
       startListenTogetherSession(targetChatId);
       return;
     }
-    if (musicState.activeChatId === targetChatId) {
+    if (musicState.activeChatId === targetChatId || isMusicAwareChat(targetChatId)) {
       document.getElementById('music-player-overlay').classList.add('visible');
     } else {
       const oldChatName = state.chats[musicState.activeChatId]?.name || '未知';
@@ -208,6 +354,15 @@
     musicState.totalElapsedTime = chat.musicData.totalTime || 0;
     musicState.isActive = true;
     musicState.activeChatId = chatId;
+    musicState.multiSyncEnabled = false;
+    musicState.syncedChatIds = [chatId];
+    musicState.syncedElapsedTimes = {};
+    const syncBtn = document.getElementById('music-sync-btn');
+    if (syncBtn) {
+      syncBtn.classList.remove('active');
+      syncBtn.setAttribute('aria-pressed', 'false');
+      syncBtn.title = '多人同步';
+    }
     if (musicState.playlist.length > 0) {
       musicState.currentIndex = 0;
     } else {
@@ -216,7 +371,11 @@
     if (musicState.timerId) clearInterval(musicState.timerId);
     musicState.timerId = setInterval(() => {
       if (musicState.isPlaying) {
-        musicState.totalElapsedTime++;
+        const awareIds = getMusicAwareChatIds();
+        if (awareIds.includes(chatId)) musicState.totalElapsedTime++;
+        for (const id of awareIds) {
+          if (id !== chatId) musicState.syncedElapsedTimes[id] = getMusicElapsedTime(id) + 1;
+        }
         updateElapsedTimeDisplay();
       }
     }, 1000);
@@ -227,17 +386,22 @@
 
   async function endListenTogetherSession(saveState = true) {
     if (!musicState.isActive) return;
+    if (document.getElementById('music-sync-modal')?.classList.contains('visible')) closeMusicSyncSettings();
     const oldChatId = musicState.activeChatId;
     document.getElementById('global-lyrics-bar').classList.remove('visible');
     const cleanupLogic = async () => {
       if (musicState.timerId) clearInterval(musicState.timerId);
       if (musicState.isPlaying) audioPlayer.pause();
+      if (saveState && musicState.multiSyncEnabled) await saveMusicSyncTimes();
       if (saveState && oldChatId && state.chats[oldChatId]) {
         const chat = state.chats[oldChatId];
         chat.musicData.totalTime = musicState.totalElapsedTime;
         await db.chats.put(chat);
       }
       musicState.isActive = false;
+      musicState.multiSyncEnabled = false;
+      musicState.syncedChatIds = [];
+      musicState.syncedElapsedTimes = {};
       musicState.activeChatId = null;
       musicState.totalElapsedTime = 0;
       musicState.timerId = null;
@@ -254,7 +418,7 @@
   function updateListenTogetherIcon(chatId, forceReset = false) {
     const iconImg = document.querySelector('#listen-together-btn img');
     if (!iconImg) return;
-    if (forceReset || !musicState.isActive || musicState.activeChatId !== chatId) {
+    if (forceReset || !isMusicAwareChat(chatId)) {
       iconImg.src = 'https://i.postimg.cc/8kYShvrJ/90-UI-2.png';
       iconImg.className = '';
       return;
@@ -267,7 +431,7 @@
   window.updateListenTogetherIconProxy = updateListenTogetherIcon;
 
   function updatePlayerUI() {
-    updateListenTogetherIcon(musicState.activeChatId);
+    updateListenTogetherIcon(musicState.multiSyncEnabled ? state.activeChatId : musicState.activeChatId);
     updateElapsedTimeDisplay();
     const titleEl = document.getElementById('music-player-song-title');
     const artistEl = document.getElementById('music-player-artist');
@@ -782,7 +946,7 @@
   }
 
 
-  async function playSong(index, isAutomatic = false) {
+  async function playSong(index, isAutomatic = false, changeSource = 'user') {
     if (index < 0 || index >= musicState.playlist.length) return;
 
     // 自动切换到该歌曲所在的歌单
@@ -916,7 +1080,8 @@
       });
     }
     if (!isAutomatic) {
-      addMusicActionSystemMessage(`将歌曲切换为了《${track.name}》`);
+      if (changeSource === 'character') addMusicActionSystemMessage(`歌曲已切换为《${track.name}》 - ${track.artist}`, false);
+      else addMusicActionSystemMessage(`将歌曲切换为了《${track.name}》`);
     }
     updatePlaylistUI();
     updatePlayerUI();
@@ -2612,6 +2777,9 @@
   window.getLrcContent = getLrcContent;
   window.saveGlobalPlaylist = saveGlobalPlaylist;
   window.addMusicActionSystemMessage = addMusicActionSystemMessage;
+  window.isMusicAwareChat = isMusicAwareChat;
+  window.getMusicElapsedTime = getMusicElapsedTime;
+  window.openMusicSyncSettings = openMusicSyncSettings;
   window.handleListenTogetherClick = handleListenTogetherClick;
   window.startListenTogetherSession = startListenTogetherSession;
   window.endListenTogetherSession = endListenTogetherSession;

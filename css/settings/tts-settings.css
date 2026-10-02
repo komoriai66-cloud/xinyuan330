@@ -1,0 +1,21 @@
+/* Scoped additions reuse the surrounding settings typography and colors. */
+.tts-settings { min-width: 0; }
+.tts-settings .settings-right { min-width: 0; }
+.tts-settings .tts-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 15px; }
+.tts-settings .tts-actions .form-button { width: auto; margin: 0; padding: 6px 10px; font-size: 12px; font-weight: 400; min-width: 0; }
+.tts-settings .tts-status { margin: 0; padding: 6px 15px 10px; font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.tts-settings input, .tts-settings select, .tts-settings textarea { max-width: 100%; box-sizing: border-box; min-width: 0; }
+.tts-settings .tts-wide-input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--secondary-bg); color: var(--text-color); font: inherit; font-size: 13px; }
+.tts-settings .tts-text-row { padding: 8px 15px; }
+.tts-settings details > summary { padding: 10px 15px; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+.tts-settings [hidden], #tts-provider-group[hidden], #tts-common-options[hidden] { display: none !important; }
+.tts-settings .tts-label { flex: 0 0 auto; white-space: nowrap; }
+.tts-settings .tts-controls { display: flex; gap: 6px; flex: 1; min-width: 0; justify-content: flex-end; }
+.tts-settings .tts-controls select { width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.tts-settings .tts-key-actions { padding-top: 0; justify-content: flex-end; }
+.tts-settings .tts-usage { padding: 0 15px 8px; margin: 0; font-size: 12px; color: var(--text-secondary); }
+@media (max-width: 390px) {
+  .tts-settings .tts-actions { gap: 5px; }
+  .tts-settings .tts-actions .form-button { padding: 6px 8px; }
+  .tts-settings .settings-right { flex: 1; max-width: 65%; }
+}

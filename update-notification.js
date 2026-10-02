@@ -2,7 +2,7 @@
 class UpdateNotification {
   constructor() {
     this.storageKey = 'update_notification_dismissed';
-    this.currentVersion = '9.27'; // 当前更新版本号
+    this.currentVersion = '10.2'; // 当前更新版本号
     this.countdownSeconds = 5;
     this.countdownInterval = null;
   }
@@ -23,12 +23,29 @@ class UpdateNotification {
       <div class="update-item important-note">注意：首次打开最好使用魔法</div>
       <div class="update-item tips">有任何问题请通过DC私信联系 <a href="https://discord.com/users/1353222930875551804" target="_blank" style="color: #4A9EFF;">点击前往</a>，其他渠道可能无法及时回复</div>
       <div class="update-item important-note">使用提示：请留意 API 设置页面的小人菜单，新增功能入口都在这里哦。</div>
-      <div class="update-divider">9.27 小更新</div>
-      <div class="update-item">1. 修复开启 API 美化后，进入聊天可能出现白屏的问题。</div>
-      <div class="update-item">2. 修复向量记忆的自动提取间隔最多只能设置为 100 条的问题，现在可设置为 5～9999 条。</div>
-      <div class="update-item">3. 角色发送的语音消息现在可以下载为 MP3。</div>
-      <div class="update-item">4. 优化消息转发：发送前可再次确认接收对象和消息范围，也可以隐藏不想误选的转发对象。</div>
-      <div class="update-item">5. 修复渲染器正则规则在部分聊天内容中显示异常的问题，并改善线下消息的规则渲染。</div>
+      <div class="update-divider">10.2 更新日志</div>
+      <div class="update-item">1. 升级渲染器功能：新增普通文字、关键词、整行、起止标记等匹配方式，支持随机替换、对照替换、格式整理，以及高亮、标签、折叠、卡片、遮罩等展示效果。</div>
+      <div class="update-item">2. 完善渲染规则管理：新增搜索、分组、批量启停、调整执行顺序、暂时停用和撤销最近修改，支持测试预览、查看处理过程及保存测试样本。</div>
+      <div class="update-item">3. 细化规则生效范围：可分别设置用户或角色消息、单聊或群聊、正文或心声，并选择在显示、发送给 AI、复制、文本导出时处理；支持保护代码块和链接。</div>
+      <div class="update-item">4. 新增“和模型聊聊”：可以单独讨论角色回复哪里不合适、希望怎样调整，沟通内容独立保存，不作为角色剧情聊天记录。</div>
+      <div class="update-item">5. 新增带意向重新生成：可填写要求或选择快捷标签，先生成候选回复，查看满意后再采用，也可撤销采用；群聊支持只调整指定成员的回复。</div>
+      <div class="update-item">6. 新增生成偏好管理：调整要求可选择仅本次、下一次主动回复、当前聊天持续生效或全局持续生效，并支持编辑、启停和删除。</div>
+      <div class="update-item">7. 修复重新生成失败后原回复丢失的问题，并避免重复点击同时发起多次重生成请求。</div>
+      <div class="update-item">8. 新增音乐多人同步：一起听时可以选择多个角色，让他们同步感知歌曲、歌词及播放操作，分别累计实际参与的听歌时长。</div>
+      <div class="update-item">9. 修复角色备注修改的提示词冲突：明确区分角色本名、当前备注，以及备注由用户还是角色修改，减少角色误认修改来源的问题。</div>
+      <div class="update-item">10. 优化向量记忆提取：默认一次提交全部待处理消息，可自行开启分批并设置每批数量；新增精简、适量、详细三种记录程度。</div>
+      <div class="update-item">11. 完善提取进度与恢复：显示处理进度、请求次数及接口返回的用量，支持暂停、继续和重试；失败后保留已成功保存的部分，避免重复提取或错误推进进度。</div>
+      <div class="update-item">12. 优化记忆日期和事件判断：区分事件发生时间与保存时间，结合来源消息解释“昨天、明天”等相对日期；无依据时标记时间不明，减少将旧事件误记为今天的问题。</div>
+      <div class="update-item">13. 优化记忆去重与计划更新：减少不同日期的相似经历被误合并，支持关联计划后续的完成、取消等状态，并保留更新记录。</div>
+      <div class="update-item">14. 新增记忆日期修复与撤销：可按原文依据修复旧日期，修复前保存备份；支持批量平移日期及撤销上次调整。</div>
+      <div class="update-item">15. 新增普通记忆梳理：可关联旧约定与后续结果，整理成角色概况；支持查看、编辑、选择应用建议和撤销操作，并设置自动整理或手动应用及不同读取方式。梳理使用总结接口，会产生 API 用量。</div>
+      <div class="update-item">16. 新增记忆与世界时间联动：新消息可保存发送当时的世界时间，后续修改日期或延迟提取不会改写已保存的时间依据；支持独立时区、流逝倍率、暂停及时间线共享设置。</div>
+      <div class="update-item">17. 新增 ElevenLabs 语音服务：角色可独立选择 MiniMax 或 ElevenLabs，支持获取、搜索、收藏音色，生成试听，以及保存声音参数预设；聊天语音和语音／视频通话均接入角色配置。</div>
+      <div class="update-item">18. 完善语音播放与保存：新增可选流式播放、长文本分段、生成音频持久保存、重新生成及清理入口；多段语音可下载为 ZIP 音频包。</div>
+      <div class="update-item">19. 修复语音相关问题：改善真实录音初始化异常、通话切换聊天后音色混用，以及消息编辑或删除后对应语音继续播放的问题。</div>
+      <div class="update-item">20. 优化字体设置：支持明确切换默认、网络和本地字体来源，预览与正式设置分离；新增加载状态、失败提示、重新加载和退出未保存提醒，完善字体、字号应用范围及预设保存。</div>
+      <div class="update-item">21. 修复字体恢复和缓存问题：改善本地字体重启恢复、旧外观导入、快速切换字体及重新加载仍使用旧缓存的情况。</div>
+      <div class="update-item">22. 完善记忆备份与导入导出：新增概况、时间规则及相关记录随备份保存；修复相同时间戳记忆编辑、删除可能选错条目，以及精炼旧记忆后跳过尚未总结聊天的问题。</div>
       <div class="update-divider">共同更新 · 反馈中心试用</div>
       <div class="update-item">新增私密反馈和公开反馈入口，可提交建议、报错并附带截图；公开内容经审核后展示。作者回复后，可回到原浏览器查看并继续交流。</div>
       <div class="update-item tips">反馈投稿需要联网完成安全验证。中国大陆网络下，验证可能无法加载，投稿暂不保证稳定可用；遇到问题可稍后重试，或继续使用原有反馈渠道。</div>
@@ -39,7 +56,7 @@ class UpdateNotification {
         <div id="update-notification-modal">
           <img src="https://img.baibai.cv/f/mwOEhK/retouch-2026013121094970.png" class="update-decoration-img">
           <div class="update-notification-header">
-            <div class="update-title">9.27 更新</div>
+            <div class="update-title">10.2 更新</div>
           </div>
           
           <div class="update-notification-body">

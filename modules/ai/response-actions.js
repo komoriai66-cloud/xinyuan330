@@ -1,6 +1,10 @@
+  const directRegenerationPending = new Set();
   async function handleRegenerateResponse() {
     const chat = state.chats[state.activeChatId];
     if (!chat) return;
+    if (directRegenerationPending.has(chat.id) || window.GenerationAdjustments?.isBusy(chat.id)) return;
+    directRegenerationPending.add(chat.id);
+    try {
 
     const lastUserMsgIndex = chat.history.findLastIndex(msg => msg.role === 'user' && !msg.isHidden);
 
@@ -15,12 +19,21 @@
       return;
     }
 
+    const previousHistory = chat.history;
     chat.history = chat.history.slice(0, lastUserMsgIndex + 1);
+    const regenerationBase = JSON.stringify(chat.history);
 
     await db.chats.put(chat);
-    await renderChatInterface(state.activeChatId);
+    if (state.activeChatId === chat.id) await renderChatInterface(chat.id);
 
-    await triggerAiResponse();
+    await triggerAiResponse({ chatId: chat.id, manual: true });
+    // 无配置、停止或请求失败且没有新消息时，恢复被截去的原回复。
+    if (JSON.stringify(chat.history) === regenerationBase) {
+      chat.history = previousHistory;
+      await db.chats.put(chat);
+      if (state.activeChatId === chat.id) await renderChatInterface(chat.id);
+    }
+    } finally { directRegenerationPending.delete(chat.id); }
   }
 
   async function handleRegenerateCallResponse() {
@@ -138,7 +151,7 @@ ${linkedContents}
         }
       }
       let musicContext = '';
-      if (musicState.isActive && musicState.activeChatId === chat.id) {
+      if (window.isMusicAwareChat ? window.isMusicAwareChat(chat.id) : (musicState.isActive && musicState.activeChatId === chat.id)) {
         const currentTrack = musicState.currentIndex > -1 ? musicState.playlist[musicState.currentIndex] : null;
         musicContext = `\n\n# 当前音乐情景...\n(省略详细内容，与triggerAiResponse一致)`;
       }
@@ -191,7 +204,7 @@ ${linkedContents}
       } else if (memoryMode === 'structured' && window.structuredMemoryManager) {
         memoryContextForPrompt = '# 长期记忆 (必须严格遵守)\n' + window.structuredMemoryManager.serializeForPrompt(chat);
       } else {
-        memoryContextForPrompt = '# 长期记忆 (必须严格遵守)\n' + (chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)');
+        memoryContextForPrompt = '# 长期记忆 (必须严格遵守)\n' + (getMemoryContextForPrompt(chat));
       }
 
       let aiAgeContext = getDynamicAgeContext(chat);
@@ -258,7 +271,8 @@ ${linkedContents}
 
       systemPrompt = processPromptWithSettings(systemPrompt, chat.isGroup && chat.settings.isOfflineMode ? 'group_offline' : 'single');
 
-      let messagesForApi = historySlice.map(msg => ({
+      systemPrompt += window.RemarkNames.buildContext(chat, filteredHistory);
+      let messagesForApi = filteredHistory.filter(msg => !window.RemarkNames.getEvent(msg, chat)).map(msg => ({
         role: msg.role,
         content: String(msg.content)
       }));
@@ -273,6 +287,8 @@ ${linkedContents}
       }
 
       let isGemini = proxyUrl === GEMINI_API_URL;
+      const propelGuidance = window.GenerationAdjustments ? await window.GenerationAdjustments.prepare(chat, { manual: true }) : null;
+      if (propelGuidance) systemPrompt += propelGuidance.block;
       let geminiConfig = toGeminiRequestData(model, apiKey, systemPrompt, messagesForApi);
 
       let reqBody = {
@@ -356,6 +372,7 @@ ${linkedContents}
 
       await db.chats.put(chat);
       renderChatList();
+      if (propelGuidance) await window.GenerationAdjustments.consume(propelGuidance);
 
     } catch (error) {
       console.error("推进剧情失败:", error);

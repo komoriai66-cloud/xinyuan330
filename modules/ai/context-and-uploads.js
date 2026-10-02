@@ -13,7 +13,7 @@
     if (!bd.year) return ''; // 必须至少要有年份
 
     // 判断是否开启了自定义时间
-    const customTimeInfo = typeof window.getCustomTime === 'function' ? window.getCustomTime() : null;
+    const customTimeInfo = typeof window.getCustomTime === 'function' ? window.getCustomTime(chat) : null;
     const now = (customTimeInfo && customTimeInfo.enabled) ? customTimeInfo.date : new Date();
 
     let age = now.getFullYear() - bd.year;

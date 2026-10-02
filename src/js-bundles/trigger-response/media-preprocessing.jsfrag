@@ -496,41 +496,13 @@
             }
             continue;
           case 'change_remark_name':
-            if (!chat.isGroup && msgData.new_name) {
-              const oldName = chat.name;
-              const newName = msgData.new_name.trim();
-
-              if (newName && newName !== oldName) {
-                if (!chat.nameHistory) {
-                  chat.nameHistory = [];
-                }
-                if (!chat.nameHistory.includes(oldName)) {
-                  chat.nameHistory.push(oldName);
-                }
-
-                chat.name = newName;
-
-                const systemMessage = {
-                  role: 'system',
-                  type: 'pat_message',
-                  content: `“${chat.originalName}” 将备注修改为 “${newName}”`,
-                  timestamp: messageTimestamp++
-                };
-                chat.history.push(systemMessage);
-
-                const hiddenMemoryMessage = {
-                  role: 'system',
-                  content: `[系统提示：你刚刚成功将自己的备注名修改为了“${newName}”。请自然地接受这个新名字，不要对此感到惊讶。]`,
-                  timestamp: messageTimestamp++,
-                  isHidden: true
-                };
-                chat.history.push(hiddenMemoryMessage);
-
+            if (!chat.isGroup && typeof msgData.new_name === 'string') {
+              const systemMessage = window.RemarkNames.recordChange(chat, msgData.new_name, 'character', messageTimestamp++);
+              if (systemMessage) {
                 if (isViewingThisChat) {
                   appendMessage(systemMessage, chat);
-                  document.getElementById('chat-header-title').textContent = newName;
+                  document.getElementById('chat-header-title').textContent = chat.name;
                 }
-
                 await syncCharacterNameInGroups(chat);
               }
             }

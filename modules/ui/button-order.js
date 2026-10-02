@@ -11,6 +11,7 @@
 
 
     let buttonOrder = state.globalSettings.chatActionButtonsOrder || DEFAULT_BUTTON_ORDER;
+    buttonOrder = [...buttonOrder, ...['generation-adjustments-btn', 'model-communication-btn'].filter(id => !buttonOrder.includes(id))];
 
     buttonOrder.forEach(buttonId => {
       const originalButton = document.getElementById(buttonId);
@@ -154,7 +155,7 @@
     'video-call-btn', 'group-video-call-btn', 'voice-call-btn', 'group-voice-call-btn', 'send-poll-btn',
     'share-link-btn', 'share-location-btn', 'gomoku-btn',
     'open-shopping-btn', 'pat-btn', 'edit-last-response-btn',
-    'regenerate-btn', 'propel-btn', 'show-announcement-board-btn',
+    'regenerate-btn', 'generation-adjustments-btn', 'model-communication-btn', 'propel-btn', 'show-announcement-board-btn',
     'werewolf-game-btn',
 
     'read-together-btn',

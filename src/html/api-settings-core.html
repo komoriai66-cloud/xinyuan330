@@ -456,6 +456,28 @@
             </div>
         </div>
 
+
+        <div class="settings-header" data-api-category="service">ElevenLabs TTS 语音</div>
+        <div class="settings-section tts-settings" id="elevenlabs-api-settings">
+            <div class="settings-item"><label for="elevenlabs-api-key">API Key</label><div class="settings-right"><input type="password" id="elevenlabs-api-key" placeholder="输入 ElevenLabs Key" autocomplete="off"></div></div>
+            <div class="tts-actions tts-key-actions"><button type="button" class="form-button" id="elevenlabs-key-show">显示</button><button type="button" class="form-button" id="elevenlabs-key-clear">清空</button></div>
+            <div class="settings-item"><label for="elevenlabs-model-select">模型</label><div class="settings-right tts-controls"><select id="elevenlabs-model-select" class="settings-select"><option value="eleven_multilingual_v2">Multilingual v2</option><option value="eleven_flash_v2_5">Flash v2.5</option><option value="eleven_v3">Eleven v3</option></select></div></div>
+            <div class="settings-item"><label for="elevenlabs-model-input">模型 ID</label><div class="settings-right"><input id="elevenlabs-model-input" type="text" placeholder="支持手填模型 ID"></div></div>
+            <div class="tts-actions"><button type="button" class="form-button" id="elevenlabs-model-fetch">获取模型</button><button type="button" class="form-button" id="elevenlabs-connect-test">检查连接</button></div>
+            <details><summary>接口与通话设置</summary>
+                <div class="settings-item"><label for="elevenlabs-base-url">接口地址</label><div class="settings-right"><input type="text" id="elevenlabs-base-url" placeholder="https://api.elevenlabs.io"></div></div>
+                <div class="settings-item"><label for="elevenlabs-call-model">通话模型</label><div class="settings-right"><input type="text" id="elevenlabs-call-model" placeholder="留空跟随默认模型"></div></div>
+                <p class="tts-usage">自定义地址需要兼容 ElevenLabs 请求格式。</p>
+            </details>
+            <details><summary>测试语音</summary>
+                <div class="settings-item"><label for="elevenlabs-test-voice">音色 ID</label><div class="settings-right"><input type="text" id="elevenlabs-test-voice" placeholder="ElevenLabs voice_id"></div></div>
+                <div class="tts-text-row"><textarea id="elevenlabs-test-text" class="tts-wide-input" rows="2" aria-label="API 试听文本">你好，这是一条语音测试。</textarea></div>
+                <div class="tts-actions"><button type="button" class="form-button" id="elevenlabs-test-generate">生成试听</button><button type="button" class="form-button" id="elevenlabs-test-play">播放试听</button><button type="button" class="form-button" id="elevenlabs-test-stop">停止</button></div>
+            </details>
+            <p class="tts-status" id="elevenlabs-api-status" role="status" aria-live="polite">检查连接不生成音频；试听会产生 API 用量。</p>
+            <p class="tts-usage" id="tts-session-usage"></p><audio id="tts-preview-player" hidden></audio>
+        </div>
+
         <!-- 生图设置 (AI & NovelAI) -->
         <div class="settings-header" data-api-category="service" data-lang-key="apiImageGenSettings">图像生成</div>
         <div class="settings-section">

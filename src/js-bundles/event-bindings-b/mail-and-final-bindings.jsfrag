@@ -348,7 +348,7 @@
         const authorChat = state.chats[authorId];
         
         if (authorChat && authorChat.longTermMemory) {
-          const memoryIndex = authorChat.longTermMemory.findIndex(m => m.timestamp === memoryTimestamp);
+          const memoryIndex = authorChat.longTermMemory.findIndex(m => restoreBtn.dataset.normalMemoryId ? m.normalMemoryId === restoreBtn.dataset.normalMemoryId : m.timestamp === memoryTimestamp);
           if (memoryIndex !== -1) {
             const memory = authorChat.longTermMemory[memoryIndex];
             if (memory.originalMemories && Array.isArray(memory.originalMemories)) {
@@ -373,12 +373,12 @@
       
       const editBtn = e.target.closest('.edit-memory-btn');
       if (editBtn) {
-        handleEditMemory(editBtn.dataset.authorId, parseInt(editBtn.dataset.memoryTimestamp));
+        handleEditMemory(editBtn.dataset.authorId, parseInt(editBtn.dataset.memoryTimestamp), editBtn.dataset.normalMemoryId || null);
         return;
       }
       const deleteBtn = e.target.closest('.delete-memory-btn');
       if (deleteBtn) {
-        handleDeleteMemory(deleteBtn.dataset.authorId, parseInt(deleteBtn.dataset.memoryTimestamp));
+        handleDeleteMemory(deleteBtn.dataset.authorId, parseInt(deleteBtn.dataset.memoryTimestamp), deleteBtn.dataset.normalMemoryId || null);
         return;
       }
     });

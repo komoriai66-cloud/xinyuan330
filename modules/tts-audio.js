@@ -52,6 +52,7 @@
   let currentChatTtsObjectUrl = null;
   let callTtsAbortController = null;
   let callTtsGeneration = 0;
+  let currentCallTtsItem = null;
   let chatTtsGeneration = 0;
   let activeTtsCacheReader = null;
 
@@ -82,6 +83,7 @@
       callTtsAbortController = null;
     }
     ttsQueue.length = 0;
+    currentCallTtsItem = null;
     isTtsPlaying = false;
     const callPlayer = document.getElementById('call-tts-audio-player');
     if (callPlayer) {
@@ -99,11 +101,15 @@
   let currentTtsLoading = false;
   let ttsAbortController = null;
   let pendingChatTtsAudio = null;
+  let chatTtsStream = null;
+  let currentChatTtsResult = null;
   const activeAiVoiceDownloads = new Set();
 
   /** 只停聊天语音条播放，不清通话 TTS 队列（打着电话切到别人聊天时用） */
   function stopChatMessageTtsOnly() {
     chatTtsGeneration++;
+    chatTtsStream?.dispose(); chatTtsStream = null;
+    currentChatTtsResult = null;
     if (ttsAbortController) {
       ttsAbortController.abort();
       ttsAbortController = null;
@@ -124,6 +130,7 @@
       delete ttsPlayer.dataset.currentText;
       delete ttsPlayer.dataset.currentVoiceId;
       delete ttsPlayer.dataset.currentMessageKey;
+      delete ttsPlayer.dataset.currentTtsCacheKey;
     }
     revokeChatTtsUrl();
     document.querySelectorAll('.voice-play-btn').forEach(btn => { btn.textContent = '▶'; });
@@ -134,130 +141,84 @@
   function stopAllTtsPlayback() {
     stopTtsQueue();
     stopChatMessageTtsOnly();
+    window.ttsSettings?.stopPreview();
+  }
+
+  function reportTtsError(title, error) {
+    const detail = error.name === 'NotAllowedError'
+      ? '浏览器阻止自动播放，请再次点击播放；通话中可使用文字回复或重新进入通话。'
+      : error.message || '请检查语音配置或网络后重试';
+    const toast = showToast(title + '，点击查看原因', 'error', 5000);
+    toast?.addEventListener('click', () => showCustomAlert(title, ttsAlertText(detail)));
   }
 
   async function processNextTts() {
-    if (ttsQueue.length === 0) {
-      isTtsPlaying = false;
-      return;
-    }
-
+    if (!ttsQueue.length) { isTtsPlaying = false; currentCallTtsItem = null; return; }
     isTtsPlaying = true;
-    const { text, voiceId } = ttsQueue.shift();
-    const generation = callTtsGeneration;
-    const controller = new AbortController();
-    callTtsAbortController = controller;
-
+    const item = ttsQueue.shift(), generation = callTtsGeneration;
+    currentCallTtsItem = item;
+    const controller = new AbortController(); callTtsAbortController = controller;
     try {
-      const { minimaxGroupId, minimaxApiKey } = state.apiConfig;
-      if (!minimaxGroupId || !minimaxApiKey || !voiceId) {
-        processNextTts();
-        return;
-      }
-
-      console.log(`[TTS队列] 正在朗读 (剩余${ttsQueue.length}条): ${text}`);
-
-      const savedDomain = state.apiConfig.minimaxDomain || localStorage.getItem('minimax-domain') || 'https://api.minimax.chat';
-      const modelId = state.apiConfig.minimaxModel || "speech-01-hd";
-
-      const response = await fetch(`${savedDomain}/v1/t2a_v2?GroupId=${minimaxGroupId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${minimaxApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: modelId,
-          text: text,
-          stream: false,
-          voice_setting: {
-            voice_id: voiceId,
-            speed: 1.0,
-            vol: 1.0,
-            pitch: 0
-          },
-          audio_setting: {
-            sample_rate: 32000,
-            bitrate: 128000,
-            format: "mp3",
-            channel: 1
-          }
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) throw new Error("API请求失败");
-
-      const data = await response.json();
-      if (controller.signal.aborted || generation !== callTtsGeneration) return;
-      if (data.base_resp && data.base_resp.status_code !== 0) throw new Error(data.base_resp.status_msg);
-
-      const audioHex = data.data?.audio;
-      if (!audioHex) {
-        processNextTts();
-        return;
-      }
-
-      const audioBytes = hexToUint8Array(audioHex);
-      const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      revokeCallTtsUrl();
-      currentCallTtsObjectUrl = audioUrl;
-
-      const callPlayer = document.getElementById('call-tts-audio-player');
-      callPlayer.src = audioUrl;
-      callPlayer.dataset.currentText = text;
-
-      // 播完这条再播下一条
-      callPlayer.onended = () => {
-        revokeCallTtsUrl();
-        processNextTts();
+      const parts = window.ttsProvider.segments(item.text, item.chat, item.config);
+      const playPart = async index => {
+        if (generation !== callTtsGeneration || controller.signal.aborted) return;
+        const part = parts[index];
+        const blob = await window.ttsProvider.generate({ ...item.config, language: part.language }, part.text, controller.signal);
+        if (generation !== callTtsGeneration || controller.signal.aborted) return;
+        revokeCallTtsUrl(); currentCallTtsObjectUrl = URL.createObjectURL(blob);
+        const player = document.getElementById('call-tts-audio-player');
+        player.src = currentCallTtsObjectUrl; player.dataset.currentText = part.text;
+        const next = () => {
+          if (generation !== callTtsGeneration) return;
+          revokeCallTtsUrl();
+          if (index + 1 < parts.length) playPart(index + 1).catch(fail);
+          else { if (callTtsAbortController === controller) callTtsAbortController = null; processNextTts(); }
+        };
+        player.onended = next;
+        player.onerror = item.config.provider === 'elevenlabs'
+          ? () => fail(new Error('浏览器无法播放返回的音频，请检查音色、模型或接口地址')) : next;
+        await player.play();
       };
-      callPlayer.onerror = () => {
+      const fail = error => {
+        if (error.name === 'AbortError' || generation !== callTtsGeneration) return;
         revokeCallTtsUrl();
-        processNextTts();
+        console.error('TTS生成或播放失败:', error);
+        if (item.config.provider === 'elevenlabs') {
+          stopTtsQueue();
+          reportTtsError('通话朗读已停止', error);
+        } else { processNextTts(); }
       };
-
-      await callPlayer.play();
-
+      if (!parts.length) { processNextTts(); return; }
+      await playPart(0);
     } catch (error) {
       if (error.name !== 'AbortError' && generation === callTtsGeneration) {
         revokeCallTtsUrl();
-        console.error("TTS生成失败:", error);
-        processNextTts(); // 失败也继续下一条
+        if (item.config.provider === 'elevenlabs') { stopTtsQueue(); reportTtsError('通话朗读已停止', error); }
+        else { console.error('TTS生成失败:', error); processNextTts(); }
       }
-    } finally {
-      if (callTtsAbortController === controller) callTtsAbortController = null;
     }
   }
 
-  // --- 视频/语音通话专用 TTS 播放函数（队列版） ---
-  function playVideoCallPureTTS(text, voiceId) {
-    // 1. 正则去除括号及括号内的内容
-    let cleanText = text.replace(/(\[.*?\]|\(.*?\)|（.*?）|【.*?】)/g, '').trim();
+  // Freeze the call's owning character and settings before queueing.
+  function playVideoCallPureTTS(text, voiceId, chatId = state.activeChatId, timestamp) {
+    const chat = state.chats[chatId];
+    if (!chat || chat.isGroup || chat.settings.enableTts === false) return;
+    const config = window.ttsProvider.resolve(chat, { voiceId, context: 'call' });
+    // Preserve the original MiniMax silent skip for incomplete configuration.
+    if (config.provider === 'minimax' && (!config.apiKey || !config.groupId || !config.voiceId)) return;
+    const cleanText = window.ttsProvider.cleanText(text, chat, 'call');
     if (!cleanText) return;
-
-    // 1.5. 处理"仅读取对话"功能
-    if (state.activeChatId && state.chats[state.activeChatId]) {
-      const chat = state.chats[state.activeChatId];
-      if (chat.videoOptimization && chat.videoOptimization.ttsDialogueOnly) {
-        cleanText = extractDialogueOnly(cleanText);
-        console.log('[视频通话TTS] 仅读取对话模式：', cleanText);
-      }
-    }
-
-    if (!cleanText) return;
-
-    // 2. 检查配置
-    const { minimaxGroupId, minimaxApiKey } = state.apiConfig;
-    if (!minimaxGroupId || !minimaxApiKey || !voiceId) return;
-
-    // 3. 推入队列，串行处理
-    ttsQueue.push({ text: cleanText, voiceId });
-
-    if (!isTtsPlaying) {
-      processNextTts();
-    }
+    ttsQueue.push({ text: cleanText, config, chatId, timestamp, chat: { ...chat, settings: { ...chat.settings,
+      languagePolicy: chat.settings.languagePolicy ? JSON.parse(JSON.stringify(chat.settings.languagePolicy)) : undefined },
+      videoOptimization: { ...(chat.videoOptimization || {}) } } });
+    if (!isTtsPlaying) processNextTts();
+  }
+  function cancelCallMessageTts(chatId, timestamp) {
+    const matches = item => item.chatId === chatId && item.timestamp === timestamp;
+    const remaining = ttsQueue.filter(item => !matches(item));
+    if (currentCallTtsItem && matches(currentCallTtsItem)) {
+      stopTtsQueue(); ttsQueue.push(...remaining); if (ttsQueue.length) processNextTts();
+    } else { ttsQueue.splice(0, ttsQueue.length, ...remaining); }
   }
   // 播放真实录音
   async function playRealAudio(bodyElement) {
@@ -310,388 +271,248 @@
     }
   }
 
-  async function playTtsAudio(bodyElement) {
-    const bubble = bodyElement.closest('.message-bubble');
-    const messageKey = (state.activeChatId || '') + '_' + (bubble?.dataset?.timestamp || '');
+  function messageTtsRequest(body, chat) {
+    const service = window.ttsProvider.provider(chat);
+    const fallback = service === 'minimax' && (!body.dataset.ttsProvider || body.dataset.ttsProvider === service)
+      ? body.dataset.voiceId : '';
+    const config = window.ttsProvider.resolve(chat, { voiceId: fallback });
+    const raw = decodeURIComponent(service === 'elevenlabs' && body.dataset.originalContent
+      ? body.dataset.originalContent : body.dataset.text || '');
+    const parts = window.ttsProvider.segments(raw, chat, config);
+    if (!parts.length) throw new Error('没有可朗读的文本');
+    const text = parts.map(part => part.text).join('。');
+    const cacheKey = parts.map(part => window.ttsProvider.cacheKey({ ...config, language: part.language }, part.text)).join('|');
+    return { config, parts, text, voiceId: config.voiceId, cacheKey };
+  }
 
-    let text = decodeURIComponent(bodyElement.dataset.text);
+  const ttsAlertText = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
-    // 1. 获取 Voice ID
-    let voiceId = bodyElement.dataset.voiceId;
-    // 新增：初始化语言设置，默认为普通话
-    let ttsLanguage = 'zh-CN';
+  function savedMessageAudio(message) {
+    if (message?.ttsSavedAudio?.length) return message.ttsSavedAudio.map(part => part.data);
+    return [];
+  }
 
-    if (state.activeChatId && state.chats[state.activeChatId]) {
-      const chat = state.chats[state.activeChatId];
-      if (!chat.isGroup && chat.settings.enableTts !== false) {
-        // 优先使用标签上的ID，如果没有则用设置里的
-        if (!voiceId) voiceId = chat.settings.minimaxVoiceId;
-        // 【关键修复】获取用户在设置中选择的语言/方言
-        if (chat.settings.ttsLanguage) {
-          ttsLanguage = chat.settings.ttsLanguage;
-        } else if (window.languagePolicy && chat.settings.enableBilingualMode) {
-          const policy = window.languagePolicy.getPolicy(chat);
-          const selectedLanguage = policy.ttsReadMode === 'translation'
-            ? (policy.translationMode === 'interface'
-              ? (localStorage.getItem('ephone-language') === 'en' ? 'en-US' : 'zh-Hans-CN')
-              : policy.translationLanguage)
-            : policy.outputLanguage;
-          const languageMap = {
-            'zh-Hans-CN': 'zh-CN', 'zh-Hant-TW': 'zh-CN', 'zh-Hant-HK': 'zh-HK',
-            'yue-Hant-HK': 'zh-HK', 'yue-Hans-CN': 'zh-HK', 'en-GB': 'en-US',
-            'ko-KR': 'ko-KR', 'ja-JP': 'ja-JP', 'fr-FR': 'fr-FR', 'de-DE': 'de-DE',
-            'es-MX': 'es-ES', 'pt-PT': 'pt-BR'
-          };
-          ttsLanguage = languageMap[selectedLanguage] || selectedLanguage || ttsLanguage;
+  // MSE is optional: unsupported browsers reuse the completed audio from the same request.
+  function openTtsStream(player, isCurrent, onEnded, button) {
+    if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported('audio/mpeg')) return null;
+    const source = new MediaSource(), pending = [];
+    let buffer = null, ended = false, failed = false, received = false, blocked = false, fallback = null;
+    const fail = () => { failed = true; pending.length = 0; fallback?.(); };
+    const url = URL.createObjectURL(source);
+    revokeChatTtsUrl(); currentChatTtsObjectUrl = url;
+    player.src = url;
+    const drain = () => {
+      if (!isCurrent() || failed || !buffer || buffer.updating || source.readyState !== 'open') return;
+      try {
+        if (pending.length) buffer.appendBuffer(pending.shift());
+        else if (ended) source.endOfStream();
+      } catch (_) { fail(); }
+    };
+    source.addEventListener('sourceopen', () => {
+      if (!isCurrent()) return;
+      try { buffer = source.addSourceBuffer('audio/mpeg'); buffer.addEventListener('updateend', drain); buffer.addEventListener('error', fail); drain(); }
+      catch (_) { fail(); }
+    }, { once: true });
+    player.onended = onEnded;
+    player.onerror = fail;
+    player.onpause = () => { if (button) button.textContent = '▶'; };
+    return {
+      push(chunk) {
+        if (!isCurrent() || failed) return;
+        received = true; pending.push(chunk.slice().buffer); drain();
+        if (player.paused && !blocked) {
+          player.play().then(() => { if (button) { button.textContent = '❚❚'; button.style.display = 'flex'; } })
+            .catch(() => { blocked = true; });
         }
-      }
+      },
+      finish() { ended = true; drain(); return received && !failed && !blocked; },
+      setFallback(fn) { fallback = () => { const handler = fn; fallback = null; handler(); }; },
+      dispose() { failed = true; pending.length = 0; fallback = null; if (buffer) { buffer.removeEventListener('updateend', drain); buffer.removeEventListener('error', fail); } }
+    };
+  }
 
-      // 处理"仅读取对话"功能
-      if (chat.videoOptimization && chat.videoOptimization.ttsDialogueOnly) {
-        // extractDialogueOnly 会返回引号内容或原文，不会返回空
-        text = extractDialogueOnly(text);
-        console.log('TTS仅读取对话模式：', text);
-      }
+  async function persistTtsAudio(chat, message, blobs) {
+    if (!chat.settings.ttsSaveAudio || !message || savedMessageAudio(message).length) return;
+    if (blobs.reduce((sum, blob) => sum + blob.size, 0) > 12 * 1024 * 1024) {
+      showToast('这条音频超过 12 MB，保留临时缓存，可直接下载', 'info'); return;
     }
+    const data = await Promise.all(blobs.map(blob => new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => resolve({ data: reader.result, type: blob.type });
+      reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob);
+    })));
+    if (!chat.history.includes(message)) return;
+    message.ttsSavedAudio = data;
+    try { await db.chats.put(chat); }
+    catch (error) { delete message.ttsSavedAudio; showToast('音频已生成，但本地保存失败；仍可播放和下载', 'error'); }
+  }
 
-    if (!voiceId) {
-      alert("错误：无法获取 Voice ID。请检查角色设置。");
-      return;
+  async function playTtsAudio(bodyElement) {
+    const chat = state.chats[state.activeChatId];
+    if (!chat || chat.isGroup || chat.settings.enableTts === false) return;
+    const bubble = bodyElement.closest('.message-bubble');
+    const messageKey = chat.id + '_' + (bubble?.dataset?.timestamp || '');
+    const message = chat.history.find(item => String(item.timestamp) === String(bubble?.dataset?.timestamp));
+    const button = bodyElement.querySelector('.voice-play-btn'), spinner = bodyElement.querySelector('.loading-spinner');
+    const player = document.getElementById('tts-audio-player');
+    if (messageKey === currentTtsMessageKey) {
+      if (!player.paused) { stopChatMessageTtsOnly(); return; }
+      if (currentTtsLoading) { stopChatMessageTtsOnly(); return; }
     }
-
-    const button = bodyElement.querySelector('.voice-play-btn');
-    const spinner = bodyElement.querySelector('.loading-spinner');
-    const ttsPlayer = document.getElementById('tts-audio-player');
-
-    // 同一条消息点第二次：正在播放则暂停，正在请求则取消
-    if (messageKey && messageKey === currentTtsMessageKey) {
-      if (!ttsPlayer.paused && ttsPlayer.dataset.currentMessageKey === messageKey) {
-        ttsPlayer.pause();
-        currentTtsMessageKey = '';
-        if (button) button.textContent = '▶';
-        return;
-      }
-      if (currentTtsLoading && ttsAbortController) {
-        ttsAbortController.abort();
-        currentTtsMessageKey = '';
-        currentTtsLoading = false;
-        spinner.style.display = 'none';
-        if (button) button.style.display = 'flex';
-        return;
-      }
-    }
-
-    ttsPlayer.pause();
-    if (ttsAbortController) {
-      ttsAbortController.abort();
-      ttsAbortController = null;
-    }
-    chatTtsGeneration++;
+    stopChatMessageTtsOnly();
     const generation = chatTtsGeneration;
-    currentTtsLoading = false;
-    revokeChatTtsUrl();
-    document.querySelectorAll('.voice-play-btn').forEach(btn => btn.textContent = '▶');
-
-    // 2. 检查缓存 (Key加入语言区分，防止切换方言后读到旧缓存)
-    const cacheKey = `tts_v2_${voiceId}_${ttsLanguage}_${text}`;
-    let cachedAudio = state.ttsCache.get(cacheKey);
-    if (cachedAudio) {
-      console.log("从缓存播放 TTS...");
-      // 命中后移到队尾，按真实使用顺序淘汰临时缓存。
-      state.ttsCache.delete(cacheKey);
-      state.ttsCache.set(cacheKey, cachedAudio);
-      trimTtsCache();
-      currentTtsMessageKey = messageKey;
-      await playAudioFromData(cachedAudio.url, cachedAudio.type, text, voiceId, bodyElement, messageKey, () => { currentTtsMessageKey = ''; });
-      return;
-    }
-
-    currentTtsMessageKey = messageKey;
-    currentTtsLoading = true;
-    const controller = new AbortController();
-    ttsAbortController = controller;
-    const signal = controller.signal;
-    let resolvePendingAudio;
-    const pendingAudio = {
-      messageKey,
-      promise: new Promise(resolve => { resolvePendingAudio = resolve; }),
-      resolve: blob => resolvePendingAudio(blob)
-    };
-    pendingChatTtsAudio = pendingAudio;
-
-    console.log(`请求 Minimax T2A v2... VoiceID: ${voiceId}, Language: ${ttsLanguage}`);
-    if (button) button.style.display = 'none';
-    spinner.style.display = 'block';
-
-    const {
-      minimaxGroupId,
-      minimaxApiKey
-    } = state.apiConfig;
-
-    const languageMap = {
-      'zh-CN': 'Chinese',
-      'zh-HK': 'Chinese,Yue',   // 粤语特殊处理
-      'en-US': 'English',
-      'ja-JP': 'Japanese',
-      'ko-KR': 'Korean',
-      'de-DE': 'German',
-      'fr-FR': 'French',
-      'es-ES': 'Spanish',
-      'it-IT': 'Italian',
-      'ru-RU': 'Russian',
-      'pt-BR': 'Portuguese',
-      'nl-NL': 'Dutch',
-      'pl-PL': 'Polish',
-      'sv-SE': 'Swedish',
-      'tr-TR': 'Turkish',
-      'id-ID': 'Indonesian',
-      'ms-MY': 'Malay',
-      'vi-VN': 'Vietnamese',
-      'th-TH': 'Thai',
-      'hi-IN': 'Hindi',
-      'ar-SA': 'Arabic'
-    };
-
-    // 获取对应的 boost 值，如果没有匹配到就默认 'auto'
-    const boostValue = languageMap[ttsLanguage] || 'auto';
-
-    // 2. 发送请求 (注意 language_boost 的位置)
+    const controller = new AbortController(); ttsAbortController = controller;
+    currentTtsMessageKey = messageKey; currentTtsLoading = true;
+    if (button) button.style.display = 'none'; if (spinner) spinner.style.display = 'block';
+    let pending;
     try {
-      const savedDomain = state.apiConfig.minimaxDomain || localStorage.getItem('minimax-domain') || 'https://api.minimax.chat';
-      const minimaxBaseUrl = savedDomain;
-      const modelId = state.apiConfig.minimaxModel || "speech-01-hd";
-
-      const response = await fetch(`${minimaxBaseUrl}/v1/t2a_v2?GroupId=${minimaxGroupId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${minimaxApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: modelId,
-          text: text,
-          stream: false,
-
-
-          language_boost: boostValue,
-
-          voice_setting: {
-            voice_id: voiceId,
-            speed: 1.0,
-            vol: 1.0,
-            pitch: 0
-          },
-          audio_setting: {
-            sample_rate: 32000,
-            bitrate: 128000,
-            format: "mp3",
-            channel: 1
+      const saved = savedMessageAudio(message);
+      const request = saved.length ? null : messageTtsRequest(bodyElement, chat);
+      const text = request?.text || decodeURIComponent(bodyElement.dataset.text || '');
+      const voiceId = request?.voiceId || '', blobs = [];
+      if (request?.config.provider === 'elevenlabs' && request.config.streaming && request.parts.length === 1) {
+        player.dataset.currentText = text; player.dataset.currentVoiceId = voiceId; player.dataset.currentMessageKey = messageKey;
+        chatTtsStream = openTtsStream(player, () => generation === chatTtsGeneration && !controller.signal.aborted,
+          () => { currentTtsMessageKey = ''; revokeChatTtsUrl(); }, button);
+      }
+      if (saved.length) {
+        for (const data of saved) blobs.push(await fetch(data).then(response => response.blob()));
+      } else {
+        let settle;
+        pending = { messageKey, cacheKey: request.cacheKey, promise: new Promise(resolve => { settle = resolve; }), resolve: value => settle(value) };
+        pendingChatTtsAudio = pending;
+        for (const part of request.parts) blobs.push(await window.ttsProvider.generate({ ...request.config, language: part.language }, part.text, controller.signal,
+          chatTtsStream ? chunk => { if (generation === chatTtsGeneration) chatTtsStream?.push(chunk); } : undefined));
+        pending.resolve(blobs);
+        if (pendingChatTtsAudio === pending) pendingChatTtsAudio = null;
+        await persistTtsAudio(chat, message, blobs);
+      }
+      if (controller.signal.aborted || generation !== chatTtsGeneration) return;
+      player.dataset.currentTtsCacheKey = request?.cacheKey || 'saved_' + messageKey;
+      currentChatTtsResult = { messageKey, cacheKey: player.dataset.currentTtsCacheKey, blobs };
+      const playPart = async index => {
+        if (controller.signal.aborted || generation !== chatTtsGeneration) return;
+        revokeChatTtsUrl(); currentChatTtsObjectUrl = URL.createObjectURL(blobs[index]);
+        player.onloadedmetadata = () => {
+          if (generation !== chatTtsGeneration || !Number.isFinite(player.duration)) return;
+          blobs[index].ttsDuration = player.duration;
+          if (blobs.every(blob => Number.isFinite(blob.ttsDuration))) {
+            const total = Math.round(blobs.reduce((sum, blob) => sum + blob.ttsDuration, 0));
+            const duration = bodyElement.querySelector('.voice-duration');
+            if (duration) duration.textContent = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}''`;
           }
-        }),
-        signal
-      });
-
-      if (!response.ok) {
-        let errorMsg = `API 失败: ${response.status}`;
+        };
         try {
-          const errJson = await response.json();
-          errorMsg += ` - ${errJson.base_resp?.status_msg || JSON.stringify(errJson)}`;
-        } catch (e) { }
-        throw new Error(errorMsg);
-      }
-
-      const data = await response.json();
-      if (signal.aborted || generation !== chatTtsGeneration) return;
-
-      // 4. 检查业务状态码
-      if (data.base_resp && data.base_resp.status_code !== 0) {
-        throw new Error(`API 错误: ${data.base_resp.status_msg}`);
-      }
-
-      // 5. 解析 Hex 音频数据
-      const audioHex = data.data?.audio;
-      if (!audioHex) throw new Error("API 未返回音频数据");
-
-      const audioBytes = hexToUint8Array(audioHex);
-      const audioBlob = new Blob([audioBytes], {
-        type: 'audio/mpeg'
-      });
-      pendingAudio.resolve(audioBlob);
-      if (pendingChatTtsAudio === pendingAudio) pendingChatTtsAudio = null;
-      const audioUrl = URL.createObjectURL(audioBlob);
-      revokeChatTtsUrl();
-      currentChatTtsObjectUrl = audioUrl;
-
-      await playAudioFromData(audioUrl, 'audio/mpeg', text, voiceId, bodyElement, messageKey, () => {
-        currentTtsMessageKey = '';
-        revokeChatTtsUrl();
-      });
-
-      // 写入仅用于加速重复播放的临时缓存；旧项按插入顺序淘汰，不影响持久化消息。
-      if (activeTtsCacheReader) {
-        try { activeTtsCacheReader.abort(); } catch (error) { }
-      }
-      const reader = new FileReader();
-      activeTtsCacheReader = reader;
-      reader.onloadend = function () {
-        if (activeTtsCacheReader === reader) activeTtsCacheReader = null;
-        if (reader.error || generation !== chatTtsGeneration || typeof reader.result !== 'string') return;
-        state.ttsCache.set(cacheKey, {
-          url: reader.result,
-          type: 'audio/mpeg'
+          await playAudioFromData(currentChatTtsObjectUrl, blobs[index].type, text, voiceId, bodyElement, messageKey, () => {
+            if (generation !== chatTtsGeneration || controller.signal.aborted) return;
+            if (index + 1 < blobs.length) playPart(index + 1).catch(error => reportTtsError('播放失败', error));
+            else { currentTtsMessageKey = ''; revokeChatTtsUrl(); }
+          });
+        } catch (error) {
+          if (error.name === 'NotAllowedError') {
+            currentTtsMessageKey = ''; showToast('音频已生成，请再次点击语音播放', 'info');
+          } else throw error;
+        }
+      };
+      if (chatTtsStream) {
+        chatTtsStream.setFallback(() => {
+          if (generation !== chatTtsGeneration || controller.signal.aborted) return;
+          chatTtsStream?.dispose(); chatTtsStream = null;
+          playPart(0).catch(error => reportTtsError('播放失败', error));
         });
-        trimTtsCache();
+        if (chatTtsStream.finish()) return;
+        if (!chatTtsStream) return; // A synchronous MSE failure already started the completed-blob fallback.
+        chatTtsStream.dispose(); chatTtsStream = null;
       }
-      reader.readAsDataURL(audioBlob);
-
+      await playPart(0);
     } catch (error) {
-      if (error.name === 'AbortError') return;
-      if (generation !== chatTtsGeneration) return;
-      if (generation === chatTtsGeneration) revokeChatTtsUrl();
-      console.error("TTS 生成失败:", error);
-      await showCustomAlert("语音生成失败", `错误: ${error.message}`);
+      if (error.name !== 'AbortError' && generation === chatTtsGeneration) {
+        currentTtsMessageKey = ''; revokeChatTtsUrl();
+        await showCustomAlert('语音生成失败', ttsAlertText(error.message));
+      }
     } finally {
-      pendingAudio.resolve(null);
-      if (pendingChatTtsAudio === pendingAudio) pendingChatTtsAudio = null;
-      if (generation === chatTtsGeneration) currentTtsLoading = false;
-      if (ttsAbortController === controller) ttsAbortController = null;
-      spinner.style.display = 'none';
-      if (button) button.style.display = 'flex';
+      pending?.resolve(null);
+      if (pendingChatTtsAudio === pending) pendingChatTtsAudio = null;
+      if (generation === chatTtsGeneration) {
+        currentTtsLoading = false;
+        if (spinner) spinner.style.display = 'none'; if (button) button.style.display = 'flex';
+      }
     }
   }
 
   async function downloadAiVoiceMessage(chatId, timestamp) {
-    const chat = state.chats[chatId];
-    const message = chat?.history.find(item => item.timestamp === timestamp);
-    if (state.activeChatId !== chatId || !message || message.role !== 'assistant'
-        || message.type !== 'voice_message' || chat.isGroup || chat.settings.enableTts === false) return;
-
+    const chat = state.chats[chatId], message = chat?.history.find(item => item.timestamp === timestamp);
+    if (state.activeChatId !== chatId || !message || message.role !== 'assistant' || message.type !== 'voice_message'
+        || chat.isGroup || chat.settings.enableTts === false) return;
     const downloadKey = `${chatId}_${timestamp}`;
-    if (activeAiVoiceDownloads.has(downloadKey)) {
-      showToast('这条语音正在下载', 'info');
-      return;
-    }
+    if (activeAiVoiceDownloads.has(downloadKey)) { showToast('这条语音正在下载', 'info'); return; }
     activeAiVoiceDownloads.add(downloadKey);
-    let loadingToast = null;
-
+    let loading;
     try {
       const body = document.querySelector(`.message-bubble[data-timestamp="${timestamp}"] .voice-message-body`);
       if (!body) throw new Error('找不到这条语音，请返回聊天后重试');
-
-      let text = decodeURIComponent(body.dataset.text || '');
-      const voiceId = body.dataset.voiceId || chat.settings.minimaxVoiceId;
-      if (!voiceId) throw new Error('未设置语音 ID，请先检查角色设置');
-
-      let ttsLanguage = chat.settings.ttsLanguage || 'zh-CN';
-      if (!chat.settings.ttsLanguage && window.languagePolicy && chat.settings.enableBilingualMode) {
-        const policy = window.languagePolicy.getPolicy(chat);
-        const selectedLanguage = policy.ttsReadMode === 'translation'
-          ? (policy.translationMode === 'interface'
-            ? (localStorage.getItem('ephone-language') === 'en' ? 'en-US' : 'zh-Hans-CN')
-            : policy.translationLanguage)
-          : policy.outputLanguage;
-        const languageMap = {
-          'zh-Hans-CN': 'zh-CN', 'zh-Hant-TW': 'zh-CN', 'zh-Hant-HK': 'zh-HK',
-          'yue-Hant-HK': 'zh-HK', 'yue-Hans-CN': 'zh-HK', 'en-GB': 'en-US',
-          'ko-KR': 'ko-KR', 'ja-JP': 'ja-JP', 'fr-FR': 'fr-FR', 'de-DE': 'de-DE',
-          'es-MX': 'es-ES', 'pt-PT': 'pt-BR'
-        };
-        ttsLanguage = languageMap[selectedLanguage] || selectedLanguage || ttsLanguage;
-      }
-      if (chat.videoOptimization?.ttsDialogueOnly) text = extractDialogueOnly(text);
-
-      const messageKey = `${chatId}_${timestamp}`;
-      const cacheKey = `tts_v2_${voiceId}_${ttsLanguage}_${text}`;
-      const player = document.getElementById('tts-audio-player');
-      let audioBlob = null;
-
-      if (currentChatTtsObjectUrl && player?.dataset.currentMessageKey === messageKey) {
-        try { audioBlob = await fetch(currentChatTtsObjectUrl).then(response => response.blob()); }
-        catch (error) { /* 播放结束后 Blob URL 可能已被释放，继续查缓存。 */ }
-      }
-      if (!audioBlob && state.ttsCache.has(cacheKey)) {
-        audioBlob = await fetch(state.ttsCache.get(cacheKey).url).then(response => response.blob());
-      }
-      if (!audioBlob && pendingChatTtsAudio?.messageKey === messageKey) {
-        loadingToast = showToast('正在等待语音生成', 'loading');
-        audioBlob = await pendingChatTtsAudio.promise;
-      }
-
-      if (!audioBlob) {
-        loadingToast?.remove();
-        loadingToast = showToast('正在生成 MP3，可能产生 API 用量', 'loading');
-        const { minimaxGroupId, minimaxApiKey } = state.apiConfig;
-        if (!minimaxGroupId || !minimaxApiKey) throw new Error('请先配置 Minimax 语音 API');
-        const languageMap = {
-          'zh-CN': 'Chinese', 'zh-HK': 'Chinese,Yue', 'en-US': 'English',
-          'ja-JP': 'Japanese', 'ko-KR': 'Korean', 'de-DE': 'German',
-          'fr-FR': 'French', 'es-ES': 'Spanish', 'it-IT': 'Italian',
-          'ru-RU': 'Russian', 'pt-BR': 'Portuguese', 'nl-NL': 'Dutch',
-          'pl-PL': 'Polish', 'sv-SE': 'Swedish', 'tr-TR': 'Turkish',
-          'id-ID': 'Indonesian', 'ms-MY': 'Malay', 'vi-VN': 'Vietnamese',
-          'th-TH': 'Thai', 'hi-IN': 'Hindi', 'ar-SA': 'Arabic'
-        };
-        const savedDomain = state.apiConfig.minimaxDomain || localStorage.getItem('minimax-domain') || 'https://api.minimax.chat';
-        const response = await fetch(`${savedDomain}/v1/t2a_v2?GroupId=${minimaxGroupId}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${minimaxApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: state.apiConfig.minimaxModel || 'speech-01-hd',
-            text,
-            stream: false,
-            language_boost: languageMap[ttsLanguage] || 'auto',
-            voice_setting: { voice_id: voiceId, speed: 1.0, vol: 1.0, pitch: 0 },
-            audio_setting: { sample_rate: 32000, bitrate: 128000, format: 'mp3', channel: 1 }
-          })
-        });
-        if (!response.ok) {
-          let errorMessage = `API 失败: ${response.status}`;
-          try {
-            const errorData = await response.json();
-            errorMessage += ` - ${errorData.base_resp?.status_msg || JSON.stringify(errorData)}`;
-          } catch (error) { }
-          throw new Error(errorMessage);
+      const saved = savedMessageAudio(message);
+      let blobs = [];
+      if (saved.length) {
+        for (const data of saved) blobs.push(await fetch(data).then(response => response.blob()));
+      } else {
+        const request = messageTtsRequest(body, chat);
+        if (currentChatTtsResult?.messageKey === downloadKey && currentChatTtsResult.cacheKey === request.cacheKey) {
+          blobs = currentChatTtsResult.blobs;
+        } else {
+          loading = showToast('正在获取音频；未缓存时会产生 API 用量', 'loading');
+          // Each download attaches independently to shared work before playback can cancel it.
+          for (const part of request.parts) blobs.push(await window.ttsProvider.generate({ ...request.config, language: part.language }, part.text));
         }
-        const data = await response.json();
-        if (data.base_resp && data.base_resp.status_code !== 0) {
-          throw new Error(`API 错误: ${data.base_resp.status_msg}`);
-        }
-        if (!data.data?.audio) throw new Error('API 未返回音频数据');
-        audioBlob = new Blob([hexToUint8Array(data.data.audio)], { type: 'audio/mpeg' });
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (!reader.error && typeof reader.result === 'string' && !state.ttsCache.has(cacheKey)) {
-            state.ttsCache.set(cacheKey, { url: reader.result, type: 'audio/mpeg' });
-            trimTtsCache();
-          }
-        };
-        reader.readAsDataURL(audioBlob);
       }
-
-      if (!audioBlob.size) throw new Error('音频文件为空，请重试');
-      const safeChatName = String(chat.name || 'AI').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim().slice(0, 32) || 'AI';
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const link = document.createElement('a');
-      link.href = audioUrl;
-      link.download = `${safeChatName}_语音_${timestamp}.mp3`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(audioUrl), 60000);
-      showToast('已开始下载 MP3', 'success');
-    } catch (error) {
-      console.error('下载 AI 语音失败:', error);
-      showCustomAlert('下载 MP3 失败', error.message || '请稍后重试');
-    } finally {
-      loadingToast?.remove();
-      activeAiVoiceDownloads.delete(downloadKey);
-    }
+      if (blobs.some(blob => !blob.size)) throw new Error('音频文件为空');
+      const safeName = String(chat.name || 'AI').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim().slice(0, 32) || 'AI';
+      let file = blobs[0], filename = `${safeName}_语音_${timestamp}.mp3`;
+      if (blobs.length > 1) {
+        if (typeof JSZip === 'undefined') throw new Error('分段音频下载需要 ZIP 组件，请检查网络后重试');
+        const zip = new JSZip();
+        for (let index = 0; index < blobs.length; index++) zip.file(`${safeName}_${String(index + 1).padStart(3, '0')}.mp3`, await blobs[index].arrayBuffer());
+        file = await zip.generateAsync({ type: 'blob' }); filename = `${safeName}_语音_${timestamp}.zip`;
+      }
+      const url = URL.createObjectURL(file), link = document.createElement('a');
+      link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      showToast(blobs.length > 1 ? '已开始下载分段音频包' : '已开始下载 MP3', 'success');
+    } catch (error) { showCustomAlert('下载语音失败', ttsAlertText(error.message || '请稍后重试')); }
+    finally { loading?.remove(); activeAiVoiceDownloads.delete(downloadKey); }
   }
 
+  async function regenerateAiVoiceMessage(chatId, timestamp) {
+    const chat = state.chats[chatId], message = chat?.history.find(item => item.timestamp === timestamp);
+    if (!message || chat.isGroup || message.role !== 'assistant' || message.type !== 'voice_message' || chat.settings.enableTts === false) return;
+    const key = `${chatId}_${timestamp}`;
+    if (activeAiVoiceDownloads.has(key)) { showToast('这条语音正在下载或生成，请稍后重试', 'info'); return; }
+    if (!await showCustomConfirm('重新生成语音', '使用角色当前语音配置重新生成，会产生 API 用量。已保存音频只在成功后替换。')) return;
+    activeAiVoiceDownloads.add(key);
+    let toast;
+    try {
+      const body = document.querySelector(`.message-bubble[data-timestamp="${timestamp}"] .voice-message-body`);
+      if (!body || state.activeChatId !== chatId) return;
+      const request = messageTtsRequest(body, chat), blobs = [];
+      stopChatMessageTtsOnly(); toast = showToast('正在重新生成语音', 'loading');
+      for (const part of request.parts) {
+        const config = { ...request.config, language: part.language };
+        const partKey = window.ttsProvider.cacheKey(config, part.text);
+        state.ttsCache.delete(partKey);
+        blobs.push(await window.ttsProvider.generate(config, part.text));
+      }
+      const saved = message.ttsSavedAudio;
+      if (saved?.length || chat.settings.ttsSaveAudio) {
+        delete message.ttsSavedAudio;
+        await persistTtsAudio({ ...chat, settings: { ...chat.settings, ttsSaveAudio: true } }, message, blobs);
+        if (!message.ttsSavedAudio && saved) {
+          message.ttsSavedAudio = saved;
+          throw new Error('新音频已生成，但替换保存失败，旧音频已保留');
+        }
+      }
+      showToast('语音已重新生成，点击语音条播放', 'success');
+    } catch (error) { showCustomAlert('重新生成失败', ttsAlertText(error.message || '请稍后重试')); }
+    finally { toast?.remove(); activeAiVoiceDownloads.delete(key); }
+  }
 
   function playAudioFromData(audioSrc, audioType, text, voiceId, bodyElement, messageKey, onEndedCallback) {
     return new Promise((resolve, reject) => {
@@ -726,6 +547,10 @@
       ttsPlayer.onpause = () => {
         const button = bodyElement.querySelector('.voice-play-btn');
         if (button) button.textContent = '▶';
+      };
+      ttsPlayer.onerror = () => {
+        stopChatMessageTtsOnly();
+        showToast('音频无法播放；已生成的音频仍可下载或重新生成', 'error');
       };
     });
   }
@@ -920,6 +745,7 @@
   // ========== 全局暴露 ==========
   window.playTtsAudio = playTtsAudio;
   window.downloadAiVoiceMessage = downloadAiVoiceMessage;
+  window.regenerateAiVoiceMessage = regenerateAiVoiceMessage;
   window.playRealAudio = playRealAudio;
   window.playSilentAudio = playSilentAudio;
   window.stopSilentAudio = stopSilentAudio;
@@ -927,6 +753,7 @@
   window.stopChatMessageTtsOnly = stopChatMessageTtsOnly;
   window.stopAllTtsPlayback = stopAllTtsPlayback;
   window.playVideoCallPureTTS = playVideoCallPureTTS;
+  window.cancelCallMessageTts = cancelCallMessageTts;
   window.toggleVoiceTranscript = toggleVoiceTranscript;
   window.toggleBilingualTranslation = toggleBilingualTranslation;
 

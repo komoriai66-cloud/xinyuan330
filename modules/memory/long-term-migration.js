@@ -19,20 +19,22 @@
     const content = await showCustomPrompt(`为"${targetChatForMemory.name}"添加记忆`, '请输入要添加的记忆要点：', '', 'textarea');
     if (content && content.trim()) {
       if (!targetChatForMemory.longTermMemory) targetChatForMemory.longTermMemory = [];
-      targetChatForMemory.longTermMemory.push({
+      const addedMemory = {
         content: content.trim(),
         timestamp: Date.now(),
         source: 'manual'
-      });
+      };
+      targetChatForMemory.longTermMemory.push(addedMemory);
       await db.chats.put(targetChatForMemory);
+      window.normalMemoryManager?.afterSummary(targetChatForMemory, addedMemory, null, targetChatForMemory).catch(error => console.warn('[普通记忆]', error));
       renderLongTermMemoryList();
     }
   }
 
-  async function handleEditMemory(authorChatId, memoryTimestamp) {
+  async function handleEditMemory(authorChatId, memoryTimestamp, normalMemoryId = null) {
     const authorChat = state.chats[authorChatId];
     if (!authorChat || !authorChat.longTermMemory) return;
-    const memoryIndex = authorChat.longTermMemory.findIndex(m => m.timestamp === memoryTimestamp);
+    const memoryIndex = authorChat.longTermMemory.findIndex(m => normalMemoryId ? m.normalMemoryId === normalMemoryId : m.timestamp === memoryTimestamp);
     if (memoryIndex === -1) return;
     const memory = authorChat.longTermMemory[memoryIndex];
     const newContent = await showCustomPrompt('编辑记忆', '请修改记忆要点：', memory.content, 'textarea');
@@ -43,14 +45,14 @@
     }
   }
 
-  async function handleDeleteMemory(authorChatId, memoryTimestamp) {
+  async function handleDeleteMemory(authorChatId, memoryTimestamp, normalMemoryId = null) {
     const confirmed = await showCustomConfirm('确认删除', '确定要删除这条长期记忆吗？', {
       confirmButtonClass: 'btn-danger'
     });
     if (confirmed) {
       const authorChat = state.chats[authorChatId];
       if (!authorChat || !authorChat.longTermMemory) return;
-      authorChat.longTermMemory = authorChat.longTermMemory.filter(m => m.timestamp !== memoryTimestamp);
+      authorChat.longTermMemory = authorChat.longTermMemory.filter(m => normalMemoryId ? m.normalMemoryId !== normalMemoryId : m.timestamp !== memoryTimestamp);
       await db.chats.put(authorChat);
       renderLongTermMemoryList();
     }

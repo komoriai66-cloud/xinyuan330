@@ -957,3 +957,108 @@
 #phone-screen.dark-mode #reset-font-btn:active {
     background: rgba(255, 69, 58, 0.18) !important;
 }
+
+/* 字体页新增操作沿用现有的小按钮和输入框尺度，固定导航不随正文缩放。 */
+#font-settings-screen .font-ios-header {
+    gap: 8px;
+    --user-font-scale: 1;
+}
+#font-settings-screen .font-nav-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    text-align: center;
+}
+#font-settings-screen .font-nav-back,
+#font-settings-screen .font-header-save-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+#font-settings-screen .font-header-save-btn:disabled { opacity: .5; }
+#font-settings-screen .font-cell-left,
+#font-settings-screen .font-cell-texts,
+#font-settings-screen .font-local-info,
+#font-settings-screen .font-local-texts,
+#font-settings-screen .font-select-wrapper {
+    min-width: 0;
+}
+#font-settings-screen .font-cell-icon,
+#font-settings-screen .ios-switch,
+#font-settings-screen .font-action-pills,
+#font-settings-screen .font-size-controls { flex-shrink: 0; }
+#font-settings-screen .font-size-controls,
+#font-settings-screen .font-action-pills,
+#font-settings-screen .font-source-cell .font-select-wrapper { --user-font-scale: 1; }
+#font-settings-screen .font-slider-header > .font-cell-main {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#font-settings-screen .font-cell-sub { overflow-wrap: anywhere; }
+#font-settings-screen .font-cell-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#font-settings-screen .font-local-texts { flex: 1; }
+#font-settings-screen .font-format-badge { flex-shrink: 0; }
+#font-settings-screen .font-local-row { gap: 8px; }
+#font-settings-screen .font-source-cell { gap: 12px; }
+#font-settings-screen .font-source-cell .font-select-wrapper { flex: 1; max-width: 160px; }
+#font-source-select {
+    appearance: none;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary, #191919);
+    font: inherit;
+    font-size: 15px;
+    padding: 8px 24px 8px 4px;
+    cursor: pointer;
+}
+#font-settings-screen .font-load-status-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: -10px;
+    --user-font-scale: 1;
+    --user-font-family: initial;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+#font-load-status { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+#font-load-status[data-kind="error"] { color: var(--danger-color, #ff3b30); }
+#font-reload-btn { flex-shrink: 0; white-space: nowrap; }
+#font-preview { gap: 12px; min-width: 0; --user-font-scale: 1; }
+#font-preview .font-preview-sample-title { font-size: 1.05em; font-weight: 600; }
+#font-preview .font-preview-sample { font-size: 1em; line-height: 1.6; overflow-wrap: anywhere; }
+#font-preview .font-preview-button-sample {
+    align-self: flex-start;
+    border: 1px solid var(--border-color, #dfdfdf);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: .9em;
+    line-height: 1.4;
+}
+.font-reset-scope-choices { max-height: 45vh; overflow-y: auto; margin-top: 12px; }
+.font-reset-scope-choice { display: flex; align-items: center; gap: 10px; padding: 9px 0; cursor: pointer; }
+.font-reset-scope-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.font-reset-scope-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color, #dfdfdf);
+    border-radius: 5px;
+    color: transparent;
+}
+.font-reset-scope-choice input:checked + .font-reset-scope-check { background: var(--accent-color, #007aff); color: #fff; }
+.font-reset-scope-choice input:focus-visible + .font-reset-scope-check { outline: 2px solid var(--accent-color, #007aff); outline-offset: 2px; }
+@media (max-width: 375px) {
+    #font-settings-screen .font-header-save-btn { font-size: 14px; padding-inline: 4px; }
+    #font-settings-screen .font-local-row .font-action-pills { gap: 5px; }
+    #font-settings-screen .font-local-row .font-action-pills button { padding-inline: 8px; }
+    #font-settings-screen .font-slider-header { gap: 8px; }
+    #font-settings-screen .font-size-controls { gap: 5px; }
+}

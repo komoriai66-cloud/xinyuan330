@@ -55,6 +55,9 @@ class VariableMemoryManager {
       retrievalCacheEnabled: true,
       retrievalCacheInterval: 3,
       autoExtractionMsgInterval: 20,
+      extractionBatchEnabled: false,
+      extractionBatchSize: 100,
+      extractionDetail: 'balanced',
       lastExtractedMsgIndex: -1
     };
   }
@@ -87,6 +90,17 @@ class VariableMemoryManager {
     // 无损补全旧数据缺少的设置，显式的 false/0 不会被默认值覆盖。
     vm.fragments = Array.isArray(vm.fragments) ? vm.fragments : [];
     vm.settings = { ...this._defaultSettings(), ...(vm.settings || {}) };
+    if (vm.settings.lastExtractedSourceKey) {
+      const history = chat.history || [];
+      const savedIndex = vm.settings.lastExtractedMsgIndex;
+      const index = history[savedIndex] && window.MemoryExtractionSupport.sourceKey(history[savedIndex]) === vm.settings.lastExtractedSourceKey ? savedIndex :
+        history.findIndex(message => window.MemoryExtractionSupport.sourceKey(message) === vm.settings.lastExtractedSourceKey);
+      if (index >= 0) vm.settings.lastExtractedMsgIndex = index;
+      else {
+        vm.settings.autoExtractionBlocked = true;
+        vm.settings.extractionProgressError = '上次提取结束的消息已删除或修改，请手动选择范围提取，或重置提取进度。';
+      }
+    }
     vm.settings.scoreWeights = { ...this._defaultSettings().scoreWeights, ...(vm.settings.scoreWeights || {}) };
     vm.stats = { totalFragments: vm.fragments.length, totalRecalls: 0, lastUpdated: 0, ...(vm.stats || {}) };
     if (!vm._retrievalCache || typeof vm._retrievalCache !== 'object') vm._retrievalCache = this._emptyRetrievalCache();
@@ -249,7 +263,8 @@ class VariableMemoryManager {
           importance: 10,
           emotionalWeight: 5,
           createdAt: core.createdAt || Date.now(),
-          memoryTime: core.createdAt || Date.now(), // 关键：新增 memoryTime
+          memoryTime: window.MemoryExtractionSupport.validTime(core.memoryTime) || window.MemoryExtractionSupport.datedText(core.content),
+          timeBasis: 'unknown',
           lastRecalled: 0,
           recallCount: 0,
           embedding: null, // 需要重新生成
@@ -274,7 +289,8 @@ class VariableMemoryManager {
         vm.fragments.push({
           ...frag,
           category: newCat,
-          memoryTime: frag.dialogueTimeRange?.start || frag.createdAt || Date.now(), // 优先使用对话时间作为记忆时间
+          memoryTime: window.MemoryExtractionSupport.validTime(frag.memoryTime) || window.MemoryExtractionSupport.validTime(frag.dialogueTimeRange?.start) || window.MemoryExtractionSupport.datedText(frag.content),
+          timeBasis: frag.timeBasis || (frag.dialogueTimeRange?.start ? 'message' : 'unknown'),
           dialogueTimeRange: undefined // 废弃该字段，统一用 memoryTime
         });
       }
@@ -325,7 +341,18 @@ class VariableMemoryManager {
       importance: data.importance || 5,
       emotionalWeight: data.emotionalWeight || 3,
       createdAt: Date.now(),
-      memoryTime: data.memoryTime || Date.now(), // 发生时间（可自由修改）
+      memoryTime: data.memoryTime === null ? null : data.clockVersion ? (data.memoryTime ?? Date.now()) : (data.memoryTime || Date.now()),
+      memoryTimeEnd: data.memoryTimeEnd || null,
+      timeBasis: data.timeBasis || 'manual',
+      timePrecision: data.timePrecision || 'minute',
+      timeEvidence: data.timeEvidence || '',
+      eventTimeText: data.eventTimeText || '',
+      plannedTime: data.clockVersion ? (data.plannedTime ?? null) : (data.plannedTime || null),
+      ...(data.clockVersion ? { plannedTimePrecision: data.plannedTimePrecision || null } : {}),
+      ...(data.clockVersion ? { clockVersion: data.clockVersion, memoryTimeZone: data.memoryTimeZone, timeSource: data.timeSource,
+        timelineId: data.timelineId, timelineName: data.timelineName, automaticTime: data.automaticTime } : {}),
+      sourceMessageKeys: data.sourceMessageKeys || [],
+      sourceEvidence: data.sourceEvidence || [],
       lastRecalled: 0,
       recallCount: 0,
       embedding: data.embedding || null,
@@ -364,7 +391,14 @@ class VariableMemoryManager {
     if (updates.category !== undefined) frag.category = updates.category;
     if (updates.importance !== undefined) frag.importance = updates.importance;
     if (updates.emotionalWeight !== undefined) frag.emotionalWeight = updates.emotionalWeight;
-    if (updates.memoryTime !== undefined) frag.memoryTime = updates.memoryTime; // 核心：修改发生时间
+    if (updates.memoryTime !== undefined) {
+      frag.memoryTime = updates.memoryTime;
+      frag.timeBasis = 'manual';
+      frag.timePrecision = updates.timePrecision || 'minute';
+      frag.eventTimeText = '';
+      frag.memoryTimeEnd = null;
+      if (frag.clockVersion) vm._retrievalCache = this._emptyRetrievalCache();
+    }
     if (updates.linkedMemories !== undefined) frag.linkedMemories = updates.linkedMemories;
     if (updates.context !== undefined) frag.context = updates.context;
     vm.stats.lastUpdated = Date.now();
@@ -399,7 +433,7 @@ class VariableMemoryManager {
   }
 
   addCoreMemory(chat, content) {
-    return this.createFragment(chat, { content, category: 'C', importance: 10, tags: ['核心设定'] });
+    return this.createFragment(chat, { ...(window.MemoryWorldTime?.manualData(chat) || {}), content, category: 'C', importance: 10, tags: ['核心设定'] });
   }
 
   editCoreMemory(chat, id, newContent) {
@@ -415,7 +449,7 @@ class VariableMemoryManager {
   }
 
   serializeCoreMemories(chat) {
-    const cores = this.getCoreMemories(chat);
+    const cores = this.getCoreMemories(chat).filter(fragment => !window.MemoryWorldTime || window.MemoryWorldTime.visible(chat, fragment));
     if (cores.length === 0) return '';
     const language = this.resolvePromptLanguage(chat);
     let output = language === 'en' ? '## Core identity memories (must not be contradicted)\n' : '## 核心灵魂设定（不可违背）\n';
@@ -483,7 +517,7 @@ class VariableMemoryManager {
     if (dimensions > 0) vm.stats.embeddingDimensions = dimensions;
   }
 
-  async getEmbedding(text, chat) {
+  async getEmbedding(text, chat, requestOptions = {}) {
     if (!text || !text.trim()) return null;
 
     try {
@@ -506,10 +540,13 @@ class VariableMemoryManager {
       }
 
       const url = this._apiUrl(endpoint, 'embeddings');
+      if (requestOptions.signal?.aborted) throw new Error('提取已取消');
+      if (requestOptions.onRequest) requestOptions.onRequest();
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, input: normalizedText })
+        body: JSON.stringify({ model, input: normalizedText }),
+        signal: requestOptions.signal
       });
 
       if (!response.ok) {
@@ -639,7 +676,8 @@ class VariableMemoryManager {
     const weights = vm.settings.scoreWeights || {};
     const weight = (name, fallback) => Number.isFinite(Number(weights[name])) ? Number(weights[name]) : fallback;
     const queryTokens = this.tokenize(queryText);
-    return vm.fragments.filter(frag => frag.category !== 'C' && typeof frag.content === 'string' && frag.content.trim()).map(frag => {
+    return vm.fragments.filter(frag => frag.category !== 'C' && typeof frag.content === 'string' && frag.content.trim() &&
+      (!window.MemoryWorldTime || window.MemoryWorldTime.visible(chat, frag))).map(frag => {
       const semanticScore = this._hasCurrentEmbedding(chat, frag) && queryEmbedding && queryEmbedding.length === frag.embedding.length
         ? Math.max(0, this.cosineSimilarity(queryEmbedding, frag.embedding)) * this._languageCompatibility(queryText, frag) : 0;
       const searchableText = this.getSearchableText(frag);
@@ -650,7 +688,8 @@ class VariableMemoryManager {
       let importanceScore = importance / 10;
       if (importance >= 8) importanceScore *= 1.5;
       const emotion = Number.isFinite(Number(frag.emotionalWeight)) ? Number(frag.emotionalWeight) : 3;
-      let recencyScore = this.timeDecay(Number(frag.memoryTime) || Number(frag.createdAt) || Date.now());
+      let recencyScore = frag.clockVersion && window.MemoryWorldTime ? window.MemoryWorldTime.decay(chat, frag)
+        : frag.memoryTime === null ? 0.5 : this.timeDecay(Number(frag.memoryTime) || Number(frag.createdAt) || Date.now());
       if (importance >= 9) recencyScore = 1;
       const score = semanticScore * weight('semantic', 0.4) + keywordScore * weight('keyword', 0.3) + entityScore * weight('entity', 0.15) +
         importanceScore * weight('importance', 0.2) + (emotion / 10) * weight('emotion', 0.05) +
@@ -683,7 +722,7 @@ class VariableMemoryManager {
       if (cache.query === queryText && cacheAge < 10 && msgCountDiff < (Number(vm.settings.retrievalCacheInterval) || 3) && Array.isArray(cache.resultIds)) {
         const restored = cache.resultIds.map(item => {
           const fragment = vm.fragments.find(frag => frag.id === item.id);
-          return fragment ? { fragment, score: item.score } : null;
+          return fragment && (!window.MemoryWorldTime || window.MemoryWorldTime.visible(chat, fragment)) ? { fragment, score: item.score } : null;
         }).filter(Boolean);
         if (restored.length === cache.resultIds.length) return restored;
       }
@@ -753,8 +792,8 @@ class VariableMemoryManager {
         const cats = this.getCategories(chat);
         for (const r of nonCoreResults) {
           const cat = cats[r.fragment.category] || { icon: '' };
-          const dateStr = new Date(r.fragment.memoryTime).toLocaleString(promptLanguage === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-          output += `[${dateStr}] ${this._fragmentContentForLanguage(chat, r.fragment)}\n`;
+          const dateStr = window.MemoryExtractionSupport.formatTime(r.fragment, promptLanguage === 'en' ? 'en-US' : 'zh-CN');
+          output += `[${dateStr}] ${window.MemoryWorldTime?.temporalNote(chat, r.fragment, promptLanguage) || ''}${this._fragmentContentForLanguage(chat, r.fragment)}\n`;
         }
         output += '\n';
       }
@@ -762,6 +801,7 @@ class VariableMemoryManager {
 
     if (!output.trim()) output = '(暂无记忆)\n';
 
+    output = (window.MemoryWorldTime?.promptRules(chat, promptLanguage) || '') + output;
     if (promptLanguage === 'en') {
       return `## Your variable memory archive
 [System instruction: Treat the following extracted memories as your real past and naturally demonstrate that you remember them.]
@@ -782,7 +822,7 @@ ${output}`;
     if (queryText && vm._retrievalCache?.query === queryText && Array.isArray(vm._retrievalCache.resultIds)) {
       rows = vm._retrievalCache.resultIds.map(item => {
         const fragment = vm.fragments.find(candidate => candidate.id === item.id);
-        return fragment ? { fragment, score: Number(item.score) || 0 } : null;
+        return fragment && (!window.MemoryWorldTime || window.MemoryWorldTime.visible(chat, fragment)) ? { fragment, score: Number(item.score) || 0 } : null;
       }).filter(Boolean).slice(0, topN);
     }
     if (!rows.length && queryText) rows = this._selectScored(this._scoreFragments(chat, queryText), topN, false);
@@ -794,11 +834,12 @@ ${output}`;
         : '## 回闪记忆 (根据当前情境唤醒的记忆片段)\n';
       rows.slice().sort((a, b) => (Number(a.fragment.memoryTime) || 0) - (Number(b.fragment.memoryTime) || 0)).forEach(row => {
         const time = Number(row.fragment.memoryTime) || Number(row.fragment.createdAt) || Date.now();
-        const date = new Date(time).toLocaleString(promptLanguage === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-        output += `[${date}] ${this._fragmentContentForLanguage(chat, row.fragment)}\n`;
+        const date = window.MemoryExtractionSupport.formatTime(row.fragment, promptLanguage === 'en' ? 'en-US' : 'zh-CN');
+        output += `[${date}] ${window.MemoryWorldTime?.temporalNote(chat, row.fragment, promptLanguage) || ''}${this._fragmentContentForLanguage(chat, row.fragment)}\n`;
       });
     }
     if (!output.trim()) output = '(暂无记忆)\n';
+    output = (window.MemoryWorldTime?.promptRules(chat, promptLanguage) || '') + output;
     return promptLanguage === 'en'
       ? `## Your variable memory archive\n[System instruction: Treat the following extracted memories as your real past and naturally demonstrate that you remember them.]\n${output}`
       : `## 你的变量记忆档案\n[系统强制指令：你必须将以下提取出的记忆作为你真实的过去，并在对话中自然地表现出你记得这些事。]\n${output}`;
@@ -821,6 +862,29 @@ ${output}`;
     const properNounInstruction = vm.settings.preserveProperNouns === false
       ? ''
       : '人名、昵称、用户名、地点、作品、品牌、组织、游戏ID等专有名词必须保留原文，不得只保留翻译或音译。';
+    const summaryBook = window.state?.worldBooks?.find(book => book.name === '总结设定');
+    const summaryRules = (summaryBook?.content || []).filter(entry => entry.enabled !== false).map(entry => entry.content).join('\n');
+    const related = this._scoreFragments(chat, formattedHistory).slice(0, 20).map(row => ({ id: row.fragment.id, content: row.fragment.content, status: row.fragment.status }));
+    const extractionRules = `
+# 记忆内容与时间规则
+- 记录稳定事实、承诺、关系变化，也记录有具体人物、行动、结果的共同经历、秘密、意外、误会和日常趣事。重要度低不等于不能保存。
+- 例如“我和A偷偷吃炸鸡，后来被B发现”应保留A、B、偷吃和被发现；原文没有的反应不要编造。
+- 先识别完整事件，再压缩措辞；不得丢失参与人物、关键行为和结果。过滤纯寒暄和无信息的重复话语。
+- ${vm.settings.extractionDetail === 'concise' ? '精简记录：保留核心事实和有辨识度的共同经历。' : vm.settings.extractionDetail === 'detailed' ? '详细记录：保留有意义的动作、原文反应和事件过程，不记录无信息的重复。' : '适量记录：兼顾稳定事实和有辨识度的共同经历。'}
+- 每条记忆输出 sourceMessageIds（对应[消息N]的数字数组），timeBasis（message/explicit/relative/fictional/unknown）。
+- message仅用于对话当场发生的事；explicit用于原文明确日期；relative用于原文相对日期，参照来源消息日期；fictional用于剧情明确日期；不能确定用unknown。
+- eventTime、eventTimeEnd为有依据的ISO日期或null，eventTimeText保留剧情日期原文。不要使用总结当天或整段最后一条消息时间兜底。
+- timeEvidence填写对应来源消息中指明事件时间的原文短句；日期不明确时只保留已知日期范围，不能编造具体时分。
+- 计划的memoryTime对应提出计划的时间，plannedTime才是约定执行的时间。不得把未来计划记为已经发生。
+- 如确实更新下方已有计划、关系或同一事件，可输出replacesMemoryId；不同日期的相似经历不得合并。
+- 消息标注的世界时间是当时的世界日期，不是总结写入日期。相对日期按消息标注的参照计算；禁止将不同时间线的事件合并到同一条记忆。旧消息没有世界时间标注时保持原时间依据。
+# 必要背景
+角色人设：${chat.settings.aiPersona || '未设置'}
+用户人设：${chat.settings.myPersona || '未设置'}
+总结设定：${summaryRules || '未设置'}
+相关已有记忆：${JSON.stringify(related)}
+时间范围：${timeRangeStr || '未知'}
+`;
     
     if (vm.settings.useCustomExtractionPrompt && vm.settings.customExtractionPrompt?.trim()) {
       return vm.settings.customExtractionPrompt
@@ -828,7 +892,8 @@ ${output}`;
         .replace(/\{\{用户昵称\}\}/g, userNickname)
         .replace(/\{\{记忆语言\}\}/g, memoryLanguage)
         .replace(/\{\{多语言检索规则\}\}/g, `${languageInstruction}\n${multilingualInstruction}\n${properNounInstruction}`)
-        .replace(/\{\{对话记录\}\}/g, formattedHistory);
+        .replace(/\{\{时间范围\}\}/g, timeRangeStr || '未知')
+        .replace(/\{\{对话记录\}\}/g, formattedHistory) + extractionRules;
     }
 
     return `
@@ -850,7 +915,13 @@ ${output}`;
     "status": "fact/plan/wish/ongoing/completed/cancelled",
     "category": "U/A/R/E/I/L/P/T/M/C",
     "importance": 1-10,
-    "emotionalWeight": 1-10
+    "emotionalWeight": 1-10,
+    "sourceMessageIds": [1],
+    "timeBasis": "message/explicit/relative/fictional/unknown",
+    "eventTime": null,
+    "eventTimeEnd": null,
+    "eventTimeText": "",
+    "plannedTime": null
   }
 ]
 \`\`\`
@@ -868,7 +939,7 @@ ${output}`;
 - C = 核心灵魂 (必须永远铭记的生死攸关的事)
 
 # 评分规则 (1-10)
-- importance: 8-10(极其重要/转折点)，5-7(值得记住)，1-4(日常琐事，尽量别记)
+- importance: 8-10(极其重要/转折点)，5-7(值得记住)，1-4(普通但有辨识度的经历，可以记录)
 - emotionalWeight: 情感的强烈程度。
 
 # 多语言与事实规则
@@ -883,16 +954,18 @@ ${output}`;
 
 # 待提取对话
 ${formattedHistory}
+${extractionRules}
 
 请直接输出JSON数组，如果没有值得记录的内容，输出空数组 []。`;
   }
 
   parseExtractionResult(rawText) {
     try {
-      const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) return [];
+      const jsonMatch = String(rawText || '').match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error('没有返回JSON数组');
       const arr = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(arr)) return [];
+      if (!Array.isArray(arr)) throw new Error('返回内容不是数组');
+      if (arr.some(item => !item || typeof item.content !== 'string' || !item.content.trim())) throw new Error('记忆条目缺少有效正文');
       const cats = Object.keys(this.DEFAULT_CATEGORIES);
       return arr.filter(item => item && item.content).map(item => ({
         content: String(item.content).trim(),
@@ -907,24 +980,59 @@ ${formattedHistory}
         category: cats.includes(item.category) ? item.category : 'E',
         importance: Math.min(10, Math.max(1, parseInt(item.importance) || 5)),
         emotionalWeight: Math.min(10, Math.max(1, parseInt(item.emotionalWeight) || 3)),
-        memoryTime: Number.isFinite(new Date(item.memoryTime).getTime()) ? new Date(item.memoryTime).getTime() : undefined
+        memoryTime: window.MemoryExtractionSupport.validTime(item.memoryTime),
+        sourceMessageIds: item.sourceMessageIds || [],
+        timeBasis: item.timeBasis,
+        timeEvidence: item.timeEvidence,
+        eventTime: item.eventTime,
+        eventTimeEnd: item.eventTimeEnd,
+        eventTimeText: item.eventTimeText,
+        plannedTime: item.plannedTime,
+        replacesMemoryId: typeof item.replacesMemoryId === 'string' ? item.replacesMemoryId : ''
       }));
     } catch (e) {
       console.error('[变量记忆] 解析提取结果失败:', e);
-      return [];
+      throw new Error('提取结果格式错误：' + e.message);
     }
   }
 
-  async mergeExtractedMemories(chat, extractedItems, defaultTime = Date.now()) {
+  async mergeExtractedMemories(chat, extractedItems, defaultTime = null, requestOptions = {}) {
     const vm = this.getVariableMemory(chat);
     const newIds = [];
+    newIds.updated = 0;
+    newIds.duplicates = 0;
     
     for (const item of extractedItems) {
-      const draft = { ...item, memoryTime: item.memoryTime || defaultTime };
+      if (requestOptions.signal?.aborted) throw new Error('提取已取消');
+      const draft = { ...item, memoryTime: item.memoryTime ?? defaultTime };
+      const previous = vm.fragments.find(fragment => fragment.id === item.replacesMemoryId && fragment.category === item.category);
+      const sharedEntities = previous && this._entityMatch(this.tokenize(this._entityText(draft)), previous) > 0;
+      const sharedSources = previous && draft.sourceMessageKeys?.some(key => previous.sourceMessageKeys?.includes(key));
+      const sameTimeline = !draft.clockVersion || previous?.clockVersion && draft.timelineId === previous.timelineId;
+      const canUpdate = previous && sameTimeline && (sharedEntities && ['P', 'R', 'A'].includes(item.category) || sharedSources && item.category === 'E');
+      if (!canUpdate && vm.fragments.some(fragment => this._isLikelyDuplicate(chat, draft, fragment))) {
+        newIds.duplicates++;
+        continue;
+      }
       const embeddingText = this._embeddingTextFor(chat, draft);
-      const embedding = await this.getEmbedding(embeddingText, chat);
+      const embedding = await this.getEmbedding(embeddingText, chat, requestOptions);
+      if (requestOptions.signal?.aborted) throw new Error('提取已取消');
       const isDuplicate = vm.fragments.some(fragment => this._isLikelyDuplicate(chat, draft, fragment, embedding));
-      if (isDuplicate) continue;
+      if (!canUpdate && isDuplicate) { newIds.duplicates++; continue; }
+
+      if (canUpdate) {
+        const manualTime = previous.clockVersion && previous.timeBasis === 'manual' ? Object.fromEntries(['memoryTime', 'memoryTimeEnd', 'plannedTime', 'plannedTimePrecision',
+          'timeBasis', 'timePrecision', 'timeEvidence', 'eventTimeText', 'memoryTimeZone', 'timeSource'].map(key => [key, previous[key]])) : null;
+        const previousVersions = [...(previous.previousVersions || []), { content: previous.content, status: previous.status,
+          memoryTime: previous.memoryTime, recordedAt: Date.now() }];
+        Object.assign(previous, draft, { id: previous.id, createdAt: previous.createdAt,
+          previousVersions,
+          embedding, embeddingSignature: embedding ? this._embeddingSignature(chat) : '',
+          embeddingTextHash: embedding ? this._hashEmbeddingText(embeddingText) : '' });
+        if (manualTime) Object.assign(previous, manualTime);
+        newIds.updated++;
+        continue;
+      }
 
       const id = this.createFragment(chat, {
         ...draft,
@@ -935,11 +1043,21 @@ ${formattedHistory}
       newIds.push(id);
     }
     
+    vm._retrievalCache = this._emptyRetrievalCache();
+    vm.stats.lastUpdated = Date.now();
     return newIds;
   }
 
   _isLikelyDuplicate(chat, candidate, existing, candidateEmbedding = null) {
     if (!existing || candidate.category !== existing.category) return false;
+    if ((candidate.clockVersion || existing.clockVersion) && candidate.timelineId !== existing.timelineId) return false;
+    if (['E', 'R', 'M', 'I', 'L'].includes(candidate.category)) {
+      const candidateTime = window.MemoryExtractionSupport.validTime(candidate.memoryTime);
+      const existingTime = window.MemoryExtractionSupport.validTime(existing.memoryTime);
+      if (candidateTime && existingTime && new Date(candidateTime).toDateString() !== new Date(existingTime).toDateString()) return false;
+      if ((!candidateTime || !existingTime) && candidate.sourceMessageKeys?.length && existing.sourceMessageKeys?.length &&
+          !candidate.sourceMessageKeys.some(key => existing.sourceMessageKeys.includes(key))) return false;
+    }
     const candidatePolarity = candidate.polarity || (/(?:\bnot\b|n't|没有|不是|未能|不再)/i.test(candidate.content) ? 'negative' : 'positive');
     const existingPolarity = existing.polarity || (/(?:\bnot\b|n't|没有|不是|未能|不再)/i.test(existing.content) ? 'negative' : 'positive');
     if (candidatePolarity !== existingPolarity) return false;
@@ -989,7 +1107,7 @@ ${formattedHistory}
     const idsToGet = new Set(items.map(i => i.id));
     const selectedFrags = vm.fragments.filter(f => idsToGet.has(f.id));
     return selectedFrags.map(f => {
-      const dateStr = new Date(f.memoryTime).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const dateStr = window.MemoryExtractionSupport.formatTime(f);
       return `[${dateStr}] ${f.content}`;
     }).join('\n');
   }
@@ -1015,6 +1133,9 @@ ${formattedHistory}
       settings,
       fragments: vm.fragments,
       _customCategories: vm._customCategories,
+      dateRepairBackups: vm.dateRepairBackups || [],
+      memoryTimeConfig: window.MemoryWorldTime ? { ...window.MemoryWorldTime.config(chat), inherit: false } : chat.settings.memoryTime || null,
+      timeShiftBackup: vm.timeShiftBackup || null,
       stats: vm.stats
     }, null, 2);
   }
@@ -1026,8 +1147,15 @@ ${formattedHistory}
     }
     const invalid = data.fragments.find(frag => !frag || typeof frag.content !== 'string' || !frag.content.trim());
     if (invalid) throw new Error('向量记忆中存在缺少正文的条目');
+    const importedTimeConfig = mode === 'replace' && data.type === 'variable-memory-full' && data.memoryTimeConfig && window.MemoryWorldTime
+      ? { ...window.MemoryWorldTime.validateConfig(data.memoryTimeConfig), inherit: data.memoryTimeConfig.inherit === true } : null;
+    if (window.MemoryWorldTime) data.fragments.filter(fragment => fragment.clockVersion).forEach(fragment => {
+      window.MemoryWorldTime.zone(fragment.memoryTimeZone);
+      if (fragment.memoryTime !== null && !Number.isFinite(new Date(fragment.memoryTime).getTime())) throw new Error('记忆世界日期无效');
+    });
     const vm = this.getVariableMemory(chat);
     let count = 0;
+    const importedIds = new Map();
     
     if (mode === 'replace' && data.type !== 'variable-memory-partial') {
       vm.fragments = [];
@@ -1037,11 +1165,12 @@ ${formattedHistory}
     const frags = data.fragments;
     for (const frag of frags) {
       if (mode === 'merge') {
-        const isDuplicate = vm.fragments.some(f => f.id === frag.id || this.bm25Match(this.tokenize(frag.content), f.content) > 0.9);
+        const isDuplicate = vm.fragments.some(f => f.id === frag.id || this._isLikelyDuplicate(chat, frag, f));
         if (isDuplicate) continue;
       }
       
       const newId = 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      importedIds.set(frag.id, newId);
       vm.fragments.push({
         ...frag,
         id: newId,
@@ -1057,7 +1186,8 @@ ${formattedHistory}
         importance: Math.max(1, Math.min(10, Number(frag.importance) || 5)),
         emotionalWeight: Math.max(1, Math.min(10, Number(frag.emotionalWeight) || 3)),
         createdAt: Number(frag.createdAt) || Date.now(),
-        memoryTime: Number(frag.memoryTime) || Number(frag.createdAt) || Date.now(),
+        memoryTime: frag.memoryTime === null ? null : frag.clockVersion ? new Date(frag.memoryTime).getTime()
+          : (window.MemoryExtractionSupport.validTime(frag.memoryTime) || window.MemoryExtractionSupport.datedText(frag.content)),
         embedding: Array.isArray(frag.embedding) && frag.embedding.every(Number.isFinite) ? frag.embedding : null,
         embeddingSignature: Array.isArray(frag.embedding) && frag.embedding.every(Number.isFinite)
           ? (frag.embeddingSignature || '') : '',
@@ -1068,11 +1198,17 @@ ${formattedHistory}
     }
     
     if (data.type === 'variable-memory-full' && mode === 'replace') {
+      if (importedTimeConfig) chat.settings.memoryTime = importedTimeConfig;
+      if (Array.isArray(data.timeShiftBackup)) vm.timeShiftBackup = data.timeShiftBackup.filter(record => record && importedIds.has(record.id) &&
+        record.fields && typeof record.fields === 'object' && (!record.absent || Array.isArray(record.absent)))
+        .map(record => ({ ...record, id: importedIds.get(record.id) }));
+      else delete vm.timeShiftBackup;
       if (data.settings && typeof data.settings === 'object') {
         const localApiKey = vm.settings.embeddingApiKey || '';
         vm.settings = { ...vm.settings, ...data.settings, embeddingApiKey: localApiKey };
       }
       if (data._customCategories) vm._customCategories = data._customCategories;
+      if (Array.isArray(data.dateRepairBackups)) vm.dateRepairBackups = data.dateRepairBackups;
     }
     
     vm.stats.totalFragments = vm.fragments.length;
@@ -1101,7 +1237,13 @@ ${formattedHistory}
     "status": "fact/plan/wish/ongoing/completed/cancelled",
     "category": "U/A/R/E/I/L/P/T/M/C",
     "importance": 1-10,
-    "emotionalWeight": 1-10
+    "emotionalWeight": 1-10,
+    "sourceMessageIds": [1],
+    "timeBasis": "message/explicit/relative/fictional/unknown",
+    "eventTime": null,
+    "eventTimeEnd": null,
+    "eventTimeText": "",
+    "plannedTime": null
   }
 ]
 \`\`\`
@@ -1119,7 +1261,7 @@ ${formattedHistory}
 - C = 核心灵魂 (必须永远铭记的生死攸关的事)
 
 # 评分规则 (1-10)
-- importance: 8-10(极其重要/转折点)，5-7(值得记住)，1-4(日常琐事，尽量别记)
+- importance: 8-10(极其重要/转折点)，5-7(值得记住)，1-4(普通但有辨识度的经历，可以记录)
 - emotionalWeight: 情感的强烈程度。
 
 # 多语言与事实规则
@@ -1183,6 +1325,12 @@ ${formattedHistory}
       <button class="vm-toolbar-btn" id="vm-guide-btn">便携教程</button>
     `;
     container.appendChild(toolbar);
+    if (vm.extractionTask || vm.settings.autoExtractionBlocked) {
+      const status = document.createElement('div');
+      status.className = 'vm-extraction-status';
+      status.innerHTML = this.renderExtractionStatus(chat);
+      container.appendChild(status);
+    }
 
     // 批量操作工具栏 (默认隐藏)
     const batchToolbar = document.createElement('div');
@@ -1194,6 +1342,8 @@ ${formattedHistory}
       <span style="font-size:13px;color:#666;margin:0 10px;">已选 <span id="vm-batch-selected-count">0</span> 项</span>
       <button class="vm-toolbar-btn" id="vm-batch-copy-btn">复制</button>
       <button class="vm-toolbar-btn" id="vm-batch-export-btn">导出</button>
+      <button class="vm-toolbar-btn" id="vm-batch-shift-time-btn">平移日期</button>
+      ${chat.variableMemory?.timeShiftBackup ? '<button class="vm-toolbar-btn" id="vm-batch-undo-time-btn">撤销日期调整</button>' : ''}
       <button class="vm-toolbar-btn" id="vm-batch-delete-btn" style="color:#ff3b30">删除</button>
       <div style="flex:1"></div>
       <button class="vm-toolbar-btn" id="vm-batch-cancel-btn">取消</button>
@@ -1235,17 +1385,20 @@ ${formattedHistory}
         row.className = 'vm-item-row';
         
         // 格式化时间为 datetime-local 可用的格式
-        const dateObj = new Date(frag.memoryTime);
+        const dateObj = frag.memoryTime === null ? null : new Date(frag.memoryTime);
         // 处理时区偏移
-        const tzOffset = dateObj.getTimezoneOffset() * 60000;
-        const localISOTime = (new Date(dateObj - tzOffset)).toISOString().slice(0,16);
+        const tzOffset = dateObj ? dateObj.getTimezoneOffset() * 60000 : 0;
+        const localISOTime = frag.memoryTimeZone && window.MemoryWorldTime ? window.MemoryWorldTime.toInput(frag.memoryTime, frag.memoryTimeZone)
+          : dateObj && Number.isFinite(dateObj.getTime()) ? (new Date(dateObj - tzOffset)).toISOString().slice(0,16) : '';
 
         row.innerHTML = `
           <input type="checkbox" class="vm-batch-element vm-item-checkbox" style="display:none; margin-right:10px; width: 16px; height: 16px; flex-shrink: 0; align-self: flex-start; margin-top: 4px;" data-id="${frag.id}" data-type="${code === 'C' ? 'core' : 'fragment'}">
           <div class="vm-item-main">
             <span class="vm-item-content">${this._escapeHtml(this._fragmentContentForLanguage(chat, frag, 'display'))}</span>
             <div class="vm-item-meta">
-              <input type="datetime-local" class="vm-time-picker" data-id="${frag.id}" value="${localISOTime}" title="修改记忆发生时间">
+              <input type="${frag.timePrecision === 'day' ? 'date' : 'datetime-local'}" class="vm-time-picker" data-id="${frag.id}" value="${frag.timePrecision === 'day' ? localISOTime.slice(0, 10) : localISOTime}" title="修改记忆发生时间">
+              ${frag.memoryTime === null || frag.memoryTimeEnd || frag.eventTimeText || frag.plannedTime ? `<span class="vm-meta-tag">${this._escapeHtml(window.MemoryExtractionSupport.formatTime(frag))}</span>` : ''}
+              ${frag.clockVersion && window.MemoryWorldTime ? `<button type="button" class="vm-time-source-btn" data-id="${frag.id}" title="查看时间依据或修改日期规则">${this._escapeHtml(window.MemoryWorldTime.label(frag))}</button>` : ''}
               <span class="vm-meta-tag">重要度:${frag.importance}</span>
               <span class="vm-meta-tag" title="记忆原始语言">${this._escapeHtml(frag.sourceLanguage || this.detectLanguage(frag.content))}</span>
               ${this._hasCurrentEmbedding(chat, frag) ? '<span class="vm-meta-tag" title="已使用当前模型与当前检索文本向量化">Vector✓</span>' : '<span class="vm-meta-tag" style="color:#ff9500" title="当前使用本地字面检索，可在设置中补全向量">BM25</span>'}
@@ -1279,18 +1432,59 @@ ${formattedHistory}
 
   // ==================== 设置面板 ====================
 
+  renderExtractionStatus(chat) {
+    const vm = this.getVariableMemory(chat);
+    const task = vm.extractionTask;
+    if (!task) return `<div>${this._escapeHtml(vm.settings.extractionProgressError || '自动提取已停止。手动提取或点击恢复自动提取。')}</div>${vm.settings.extractionProgressError ? '' : '<button class="vm-toolbar-btn" data-vm-task-action="enable-auto">恢复自动提取</button>'}`;
+    const running = task.status === 'running' && !!this._extractionLocks.get(chat);
+    const resumable = ['failed', 'paused', 'running'].includes(task.status) && !running;
+    const names = { running: running ? '正在提取' : '提取中断', paused: '已暂停', failed: '提取失败', cancelled: '已取消', completed: '提取完成' };
+    const usage = task.usageKnown === true ? `输入${task.inputTokens || 0} / 输出${task.outputTokens || 0} token` : '用量未知';
+    return `<div class="vm-extraction-description" aria-live="polite">
+      <div>${names[task.status] || task.status} · ${task.offset}/${task.total}条 · ${task.batchEnabled ? `每批${task.batchSize}条` : '不分批'}</div>
+      <div>提取请求${task.requests}/${task.plannedRequests}次 · 向量化请求${task.embeddingRequests || 0}次 · ${usage}</div>
+      <div>${this._escapeHtml(window.MemoryExtractionSupport.formatTime({ memoryTime: task.rangeStart, memoryTimeEnd: task.rangeEnd, memoryTimeZone: task.rangeTimeZone }))}${task.model ? ` · ${this._escapeHtml(task.model)}` : ''}</div>
+      ${task.error ? `<div>${this._escapeHtml(task.error)}</div>` : ''}
+      ${vm.settings.extractionProgressError ? `<div>${this._escapeHtml(vm.settings.extractionProgressError)}</div>` : ''}
+      ${task.status === 'running' && !running ? '<div>页面曾中断，上一请求是否计费未知；不会自动重发。</div>' : ''}
+      </div><div class="vm-extraction-actions">
+      ${running && task.batchEnabled ? '<button class="vm-toolbar-btn" data-vm-task-action="pause">暂停</button>' : ''}
+      ${resumable ? '<button class="vm-toolbar-btn" data-vm-task-action="resume">继续 / 重试</button>' : ''}
+      ${running || resumable ? '<button class="vm-toolbar-btn" data-vm-task-action="cancel">取消</button>' : ''}
+      ${vm.settings.autoExtractionBlocked && !running && !resumable ? '<button class="vm-toolbar-btn" data-vm-task-action="enable-auto">恢复自动提取</button>' : ''}
+      </div>`;
+  }
+
   renderSettingsPanel(chat) {
     const vm = this.getVariableMemory(chat);
     const s = vm.settings;
     const coverage = this.getMultilingualCoverage(chat);
     return `
       <div class="vm-settings-panel">
+        ${window.MemoryWorldTimeUI ? `<div class="vm-settings-group"><h4>记忆时间</h4>${window.MemoryWorldTimeUI.render(chat)}</div>` : ''}
         <div class="vm-settings-group">
           <h4>提取与触发规则</h4>
           <div class="vm-setting-item">
-            <label>多少条新消息自动提取一次？</label>
+            <label>自动提取间隔</label>
             <input type="number" id="vm-auto-interval" value="${s.autoExtractionMsgInterval || 20}" min="5" max="9999" step="1" class="vm-input-full">
-            <div style="font-size:11px;color:#999;margin-top:4px;">不用担心刷屏！现在基于绝对消息数量触发，严格锁定。</div>
+            <div class="vm-setting-help">新增多少条消息后开始提取。</div>
+          </div>
+          <div class="vm-setting-row">
+            <span>分批提取</span>
+            <label class="toggle-switch"><input type="checkbox" id="vm-extraction-batch" ${s.extractionBatchEnabled === true ? 'checked' : ''}><span class="slider"></span></label>
+          </div>
+          <div id="vm-extraction-batch-fields" class="vm-setting-item" style="display:${s.extractionBatchEnabled === true ? 'block' : 'none'};">
+            <label>每批消息数量</label>
+            <input type="number" id="vm-extraction-batch-size" value="${s.extractionBatchSize}" min="1" max="9999" step="1" class="vm-input-full">
+          </div>
+          <div class="vm-setting-help">默认不分批，一次提交全部待处理消息。超出模型容量时提示失败，不自动拆分。</div>
+          <div class="vm-setting-item">
+            <label>记录详细程度</label>
+            <select id="vm-extraction-detail" class="vm-input-full">
+              <option value="balanced" ${s.extractionDetail === 'balanced' ? 'selected' : ''}>适量：事实与共同经历</option>
+              <option value="concise" ${s.extractionDetail === 'concise' ? 'selected' : ''}>精简：核心信息</option>
+              <option value="detailed" ${s.extractionDetail === 'detailed' ? 'selected' : ''}>详细：有意义的事件过程</option>
+            </select>
           </div>
         </div>
 
@@ -1436,6 +1630,12 @@ ${formattedHistory}
     }
     const vm = this.getVariableMemory(chat);
     const previousSignature = this._embeddingSignature(chat);
+    const batchEnabled = !!document.getElementById('vm-extraction-batch')?.checked;
+    const batchSize = Number(document.getElementById('vm-extraction-batch-size')?.value ?? vm.settings.extractionBatchSize);
+    if (batchEnabled && (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 9999)) throw new Error('每批消息数量请输入1～9999之间的整数');
+    vm.settings.extractionBatchEnabled = batchEnabled;
+    if (Number.isSafeInteger(batchSize) && batchSize >= 1 && batchSize <= 9999) vm.settings.extractionBatchSize = batchSize;
+    vm.settings.extractionDetail = document.getElementById('vm-extraction-detail')?.value || vm.settings.extractionDetail;
     vm.fragments.forEach(fragment => {
       if (fragment.embedding && !fragment.embeddingSignature) fragment.embeddingSignature = previousSignature;
     });
@@ -1774,7 +1974,9 @@ ${JSON.stringify(payload)}`;
 
         <div class="vm-guide-card">
           <div class="vm-guide-card-title">它怎么自动记东西？</div>
-          <p>什么都不用管！只要你在一直聊天，每聊满 20 句话（设置里可改），系统就会在后台悄悄把值得记住的事写进日记里。完全无感！</p>
+          <p>自动提取间隔决定新增多少条消息后开始。默认不分批，一次提交全部待处理消息；开启分批后，每批数量由你填写。</p>
+          <p>例如间隔1000、每批200，会分5次提取。关闭分批则只发起1次提取请求。超限或失败会停止，不自动拆分或重试。</p>
+          <p>失败、暂停后，在记忆列表点击“继续 / 重试”；已成功保存的部分不会重跑。日期没有依据时显示“时间不明”，也可从提取菜单修复旧日期并撤销修复。</p>
         </div>
 
         <div class="vm-guide-card">

@@ -610,6 +610,8 @@ ${linkedContents}
     }
 
 
+    const callGuidance = window.GenerationAdjustments ? await window.GenerationAdjustments.prepare(chat, { manual: !!userInput }) : null;
+    if (callGuidance) inCallPrompt += callGuidance.block;
     const messagesForApi = [{
       role: 'system',
       content: inCallPrompt
@@ -693,7 +695,7 @@ ${linkedContents}
       } else {
         // 单人视频通话：支持旁白和多句对话
         const enableTts = chat.settings.enableTts !== false;
-        const voiceId = chat.settings.minimaxVoiceId;
+        const voiceId = window.ttsProvider.voiceId(chat);
         const interleavedMode = chat.videoOptimization && chat.videoOptimization.interleavedMode;
 
         // 尝试解析为JSON数组
@@ -735,7 +737,7 @@ ${linkedContents}
               });
 
               if (enableTts && voiceId) {
-                playVideoCallPureTTS(msg.content, voiceId);
+                playVideoCallPureTTS(msg.content, voiceId, chat.id, aiTimestamp);
               }
               dialogueCount++;
             }
@@ -791,7 +793,7 @@ ${linkedContents}
             });
 
             if (enableTts && voiceId) {
-              playVideoCallPureTTS(messageContent, voiceId);
+              playVideoCallPureTTS(messageContent, voiceId, chat.id, aiTimestamp);
             }
           });
 
@@ -807,6 +809,7 @@ ${linkedContents}
       }
 
       callFeed.scrollTop = callFeed.scrollHeight;
+      if (callGuidance) await window.GenerationAdjustments.consume(callGuidance);
 
     } catch (error) {
       if (error.name === 'AbortError' || requestSessionId !== videoCallSessionId || !videoCallState.isActive) return;
@@ -1277,6 +1280,8 @@ ${worldBookContent}
 `;
     }
 
+    const callGuidance = window.GenerationAdjustments ? await window.GenerationAdjustments.prepare(chat, { manual: !!userInput }) : null;
+    if (callGuidance) inCallPrompt += callGuidance.block;
     const messagesForApi = [{
       role: 'system',
       content: inCallPrompt
@@ -1363,7 +1368,7 @@ ${worldBookContent}
       } else {
         // 单聊模式：支持多条消息
         const enableTts = chat.settings.enableTts !== false;
-        const voiceId = chat.settings.minimaxVoiceId;
+        const voiceId = window.ttsProvider.voiceId(chat);
 
         // 尝试解析为JSON数组（多条消息）
         const messagesArray = parseAiResponse(aiResponse);
@@ -1389,7 +1394,7 @@ ${worldBookContent}
 
           // 为每条消息播放TTS
           if (enableTts && voiceId) {
-            playVideoCallPureTTS(messageContent, voiceId);
+            playVideoCallPureTTS(messageContent, voiceId, chat.id, aiTimestamp);
           }
         });
 
@@ -1403,6 +1408,7 @@ ${worldBookContent}
       }
 
       callFeed.scrollTop = callFeed.scrollHeight;
+      if (callGuidance) await window.GenerationAdjustments.consume(callGuidance);
 
     } catch (error) {
       if (error.name === 'AbortError' || requestSessionId !== voiceCallSessionId || !voiceCallState.isActive) return;
@@ -1615,6 +1621,7 @@ ${worldBookContent}
     const message = currentCallState.callHistory.find(m => m.timestamp === timestamp);
     
     if (message) {
+      window.cancelCallMessageTts?.(currentCallState.activeChatId, timestamp);
       let finalContent = newContent;
 
       if (currentCallState.isGroupCall && message.role === 'assistant') {
@@ -1655,6 +1662,7 @@ ${worldBookContent}
       const currentCallState = isVideoCall ? videoCallState : voiceCallState;
 
       const messageIndex = currentCallState.callHistory.findIndex(m => m.timestamp === timestampToDelete);
+      window.cancelCallMessageTts?.(currentCallState.activeChatId, timestampToDelete);
       if (messageIndex > -1) {
         currentCallState.callHistory.splice(messageIndex, 1);
       }

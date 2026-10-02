@@ -252,12 +252,46 @@
                  <label>启用语音合成 (TTS)</label>
                  <label class="toggle-switch"> <input type="checkbox" id="enable-tts-switch"> <span class="slider"></span> </label>
              </div>
+              <div class="settings-item tts-settings" id="tts-provider-group">
+                  <label for="tts-provider-select">语音服务</label>
+                  <div class="settings-right"><select id="tts-provider-select" class="settings-select"><option value="minimax">MiniMax</option><option value="elevenlabs">ElevenLabs</option></select></div>
+              </div>
              <div class="settings-item" id="ai-voice-id-group">
                  <label>语音 ID</label>
                  <div class="settings-right">
                     <input type="text" id="ai-voice-id-input" placeholder="minimax voice_id">
                  </div>
              </div>
+              <div class="tts-settings" id="elevenlabs-role-options" hidden>
+                <div class="settings-item"><label for="elevenlabs-voice-search">搜索音色</label><div class="settings-right"><input type="text" id="elevenlabs-voice-search" placeholder="输入名称"></div></div>
+                <div class="tts-actions"><button type="button" class="form-button" id="elevenlabs-voice-fetch">获取音色</button><button type="button" class="form-button" id="elevenlabs-voice-next" hidden>加载更多</button></div>
+                <div class="settings-item"><label for="elevenlabs-voice-select">可用音色</label><div class="settings-right tts-controls"><select id="elevenlabs-voice-select" class="settings-select"><option value="">选择音色（也可手填 ID）</option></select></div></div>
+                <div class="tts-actions"><button type="button" class="form-button" id="elevenlabs-voice-sample">播放示例</button><button type="button" class="form-button" id="elevenlabs-favorite-add">收藏音色</button></div>
+                <details><summary>收藏与声音参数</summary>
+                  <div class="settings-item"><label for="elevenlabs-favorite-select">收藏音色</label><div class="settings-right"><select id="elevenlabs-favorite-select" class="settings-select"><option value="">收藏的音色</option></select></div></div>
+                  <div class="tts-actions"><button type="button" class="form-button" id="elevenlabs-favorite-remove">取消收藏</button></div>
+                  <div class="settings-item"><label for="elevenlabs-role-model">角色模型</label><div class="settings-right"><input type="text" id="elevenlabs-role-model" placeholder="留空跟随 API 设置"></div></div>
+                  <div class="settings-item"><label for="elevenlabs-stability">稳定度</label><div class="settings-right"><input type="number" min="0" max="1" step="0.05" id="elevenlabs-stability" placeholder="沿用音色设置"></div></div>
+                  <div class="settings-item"><label for="elevenlabs-similarity_boost">相似度</label><div class="settings-right"><input type="number" min="0" max="1" step="0.05" id="elevenlabs-similarity_boost" placeholder="沿用音色设置"></div></div>
+                  <div class="settings-item"><label for="elevenlabs-style">风格强度</label><div class="settings-right"><input type="number" min="0" max="1" step="0.05" id="elevenlabs-style" placeholder="沿用音色设置"></div></div>
+                  <div class="settings-item"><label for="elevenlabs-speaker-boost">声音增强</label><div class="settings-right"><select id="elevenlabs-speaker-boost" class="settings-select"><option value="">沿用音色设置</option><option value="true">开启</option><option value="false">关闭</option></select></div></div>
+                  <p class="tts-usage">模型不支持的参数需留空。风格与声音增强可能增加生成时间。</p>
+                  <div class="settings-item"><label for="elevenlabs-sound-preset">参数预设</label><div class="settings-right"><select id="elevenlabs-sound-preset" class="settings-select"><option value="">声音参数预设</option></select></div></div>
+                  <div class="tts-actions"><button type="button" class="form-button" id="elevenlabs-preset-save">保存参数</button><button type="button" class="form-button" id="elevenlabs-preset-apply">应用参数</button><button type="button" class="form-button" id="elevenlabs-preset-delete">删除预设</button></div>
+                </details>
+                <div class="settings-item"><label>聊天流式播放</label><label class="toggle-switch"><input type="checkbox" id="tts-stream-switch"><span class="slider"></span></label></div><p class="tts-usage">支持时边接收边播放；其他浏览器使用同一次请求的完整音频。分段语音顺序播放。</p><div class="settings-item"><label>长文本分段</label><label class="toggle-switch"><input type="checkbox" id="tts-split-long-switch"><span class="slider"></span></label></div>
+                <p class="tts-usage">超出模型限制时按句分段；多段下载为 ZIP 音频包，不截断正文。</p>
+              </div>
+              <div class="tts-settings" id="tts-common-options">
+                <div class="settings-item"><label>保存生成音频</label><label class="toggle-switch"><input type="checkbox" id="tts-save-audio-switch"><span class="slider"></span></label></div>
+                <p class="tts-usage">默认仅临时缓存。开启后保存到该条聊天消息，会增加本地存储和备份大小。</p>
+                <details><summary>试听角色语音</summary>
+                  <div class="tts-text-row"><textarea id="tts-preview-text" class="tts-wide-input" rows="2" aria-label="角色试听文本">你好，很高兴见到你。</textarea></div>
+                  <div class="tts-actions"><button type="button" class="form-button" id="tts-preview-generate">生成试听</button><button type="button" class="form-button" id="tts-preview-play">播放试听</button><button type="button" class="form-button" id="tts-preview-stop">停止</button></div>
+                  <p class="tts-usage">生成试听会产生 API 用量；角色配置保存后用于聊天和通话。</p>
+                </details>
+                <div class="tts-actions"><button type="button" class="form-button" id="tts-clear-saved-audio">清理已保存音频</button></div><p class="tts-status" id="tts-role-status" role="status" aria-live="polite"></p>
+              </div>
              <div class="settings-item" id="ai-voice-lang-group">
                 <label>语音语言/方言</label>
                 <div class="settings-right">
@@ -810,9 +844,16 @@
                         <button type="button" id="custom-time-pause-btn">暂停世界时间</button>
                         <span id="custom-time-pause-status">运行中</span>
                     </div>
+                    <div class="time-awareness-clock-actions">
+                        <label for="custom-time-rate">流逝倍率</label>
+                        <input type="number" id="custom-time-rate" class="settings-num-input" min="0" step="any" value="1">
+                        <button type="button" id="custom-time-rate-apply">应用倍率</button>
+                    </div>
                 </div>
             </div>
              
+            <div id="memory-time-settings-host"></div>
+
              <!-- NAI设置 (单聊/群聊复用ID，JS控制) -->
              <div class="settings-item-block" id="nai-character-settings-group" style="display: none;">
                 <label>NAI 出图设置 (角色专属)</label>
@@ -1030,15 +1071,15 @@
             </select> </div>
           <div class="form-group" style="flex-grow: 1; display: flex; flex-direction: column;"> <label for="rule-regex-input">正则表达式 (使用g作为标志)</label> <textarea id="rule-regex-input" rows="3" style="font-family: monospace; resize: vertical;" placeholder="例如：MTR\[(.*?)\]\[(.*?)\|(.*?)\]"></textarea>
           </div>
-          <div class="form-group" style="flex-grow: 2; display: flex; flex-direction: column;"> <label for="rule-template-input">HTML 模板 (用 $1, $2 引用)</label> <textarea id="rule-template-input" rows="6" style="font-family: monospace; resize: vertical;"
+          <div class="form-group" style="flex-grow: 2; display: flex; flex-direction: column;"> <label for="rule-template-input">替换内容 / HTML 模板 (用 $1, $2 引用)</label> <textarea id="rule-template-input" rows="6" style="font-family: monospace; resize: vertical;"
               placeholder="例如：<div class=`waimai-card`>...<span>$2</span>...</div>"></textarea> </div>
           <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;"> <label for="rule-enabled-switch" style="margin-bottom: 0;">启用规则</label> <label class="toggle-switch"> <input type="checkbox" id="rule-enabled-switch" checked>
               <span class="slider"></span> </label> </div>
 <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
     <label for="rule-do-not-send-switch" style="margin-bottom: 0;">
-        渲染时从上下文中删除
+        发送给 AI 前删除匹配内容
         <p style="font-size: 12px; font-weight: normal; color: #999; margin-top: 5px;">
-            开启后，匹配此规则的消息将不会被发送给AI，仅用于前端显示。
+            开启后，仅删除发送给 AI 的匹配片段；显示仍按模板处理。
         </p>
     </label>
     <label class="toggle-switch">

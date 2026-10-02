@@ -122,9 +122,12 @@
         }
       }
 
+      // 在自定义提示词处理完成后注入运行时事实，线上/线下模式都保留来源。
+      systemPrompt += window.RemarkNames.buildContext(chat, filteredHistory);
+
       // ========== 识图API预处理 ==========
       // 如果配置了独立的识图API，先用识图API识别图片，再把描述文本替代图片发给主API
-      const hasVisionApi = state.apiConfig.visionProxyUrl && state.apiConfig.visionApiKey && state.apiConfig.visionModel;
+      const hasVisionApi = !options.candidateContent && state.apiConfig.visionProxyUrl && state.apiConfig.visionApiKey && state.apiConfig.visionModel;
       if (hasVisionApi) {
         for (let i = 0; i < messagesPayload.length; i++) {
           const msg = messagesPayload[i];
@@ -175,21 +178,26 @@
           messagesPayload = ThoughtChainManager.injectIntoMessages(messagesPayload);
       }
 
+      if (window.GenerationAdjustments && !options.candidateContent) {
+        generationGuidance = await window.GenerationAdjustments.prepare(chat, options);
+        systemPrompt += generationGuidance.block;
+      }
       let isGemini = proxyUrl === GEMINI_API_URL;
-      let geminiConfig = toGeminiRequestData(model, apiKey, systemPrompt, messagesPayload)
+      let geminiConfig = options.candidateContent ? null : toGeminiRequestData(model, apiKey, systemPrompt, messagesPayload)
 
       // 创建新的 AbortController
-      currentApiController = new AbortController();
+      const requestController = isPreview ? { signal: options.signal } : new AbortController();
+      if (!isPreview) currentApiController = requestController;
 
       // 显示暂停调用按钮
-      if (stopBtn) {
+      if (!isPreview && stopBtn) {
         stopBtn.style.display = 'flex';
         stopBtn.classList.add('active');
       }
       const latestMcpUserMessage = [...(chat.history || [])].reverse().find(message =>
         message && message.role === 'user' && !message.isHidden
       );
-      const availableMcpTools = window.McpChatOrchestrator
+      const availableMcpTools = !isPreview && !options.candidateContent && window.McpChatOrchestrator
         ? window.McpChatOrchestrator.createCatalog(chat, latestMcpUserMessage)
         : [];
       // 工具调用包含结构化增量；当前聊天流解析器只处理文本，所以 MCP 回合使用非流式请求。
@@ -202,7 +210,7 @@
         chatId: chatId,
         chatName: chat.name,
         model: model,
-        requestSource: 'chat',
+        requestSource: isPreview ? 'generation_candidate' : options.candidateContent ? 'generation_candidate_adopted' : 'chat',
         provider: isGemini ? 'gemini' : 'openai-compatible',
         systemPrompt: systemPrompt,
         messages: isGemini ? messagesPayload : [{
@@ -231,7 +239,7 @@
       };
 
       // 回复守护只保存恢复所需元数据，不保存 API Key 或完整提示词。
-      if (window.ReplyTaskStore && (!window.ReplyGuardian || window.ReplyGuardian.settings().enabled)) {
+      if (!isPreview && !options.candidateContent && window.ReplyTaskStore && (!window.ReplyGuardian || window.ReplyGuardian.settings().enabled)) {
         try {
           const latestUserMessage = [...(chat.history || [])].reverse().find(message =>
             message && message.role === 'user' && !message.isHidden
@@ -373,7 +381,11 @@
         };
       }
 
-      if (availableMcpTools.length && window.McpChatOrchestrator) {
+      if (options.candidateContent) {
+        aiResponseContent = options.candidateContent;
+        response = { status: 200, statusText: 'Adopted candidate' };
+        responsePayload = { adoptedCandidate: true };
+      } else if (availableMcpTools.length && window.McpChatOrchestrator) {
         aiResponseContent = await window.McpChatOrchestrator.run({
           chat,
           messages: messagesPayload,
@@ -398,7 +410,7 @@
           response = isGemini ?
             await fetch(geminiConfig.url, {
               ...geminiConfig.data,
-              signal: currentApiController.signal
+              signal: requestController.signal
             }) :
             await fetch(`${proxyUrl}/v1/chat/completions`, {
               method: 'POST',
@@ -407,7 +419,7 @@
                 'Authorization': `Bearer ${apiKey}`
               },
               body: JSON.stringify(reqBody),
-              signal: currentApiController.signal
+              signal: requestController.signal
             });
         } catch (networkError) {
           if (networkError.name === 'AbortError') throw networkError;
@@ -425,6 +437,8 @@
           responsePayload = data;
         }
       }
+
+      if (isPreview) return aiResponseContent;
 
       if (replyGuardianTaskId && window.ReplyTaskStore) {
         window.ReplyTaskStore.setStage(replyGuardianTaskId, 'receiving', '正在接收回复').catch(() => {});

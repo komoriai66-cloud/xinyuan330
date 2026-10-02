@@ -107,7 +107,7 @@ ${linkedContents}
           } else if (memMode === 'structured' && window.structuredMemoryManager) {
             memberMemContent = window.structuredMemoryManager.serializeForPrompt(memberChat);
           } else if (memberChat.longTermMemory && memberChat.longTermMemory.length > 0) {
-            memberMemContent = memberChat.longTermMemory.map(mem => `- (记录于 ${formatTimeAgo(mem.timestamp)}) ${mem.content}`).join('\n');
+            memberMemContent = getMemoryContextForPrompt(memberChat, { includeTimestamp: true });
           }
 
           if (memberMemContent && memberMemContent.trim() !== '') {
